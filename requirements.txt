@@ -1,0 +1,6 @@
+streamlit
+geemap==0.35.1
+earthengine-api
+geocoder
+folium
+python-dateutil
