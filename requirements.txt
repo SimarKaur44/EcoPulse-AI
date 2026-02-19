@@ -1,7 +1,8 @@
 streamlit
-geemap==0.35.1
+geemap
 earthengine-api
 geocoder
 folium
 setuptools
 python-dateutil
+
