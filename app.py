@@ -238,7 +238,7 @@ with col_map:
         m.addLayer(empty_boundary, {'palette': ['00FF88']}, 'Target Boundary')
 
     # 🌟 NEW: Render map flawlessly using streamlit-folium 🌟
-   map_data = st_folium(m, height=750, use_container_width=True, key=f"map_update_{st.session_state.mitigation_level}")
+    map_data = st_folium(m, height=750, use_container_width=True, key=f"map_update_{st.session_state.mitigation_level}")
 
     if map_data and map_data.get('last_active_drawing'):
         new_geom = map_data['last_active_drawing']['geometry']
@@ -246,5 +246,6 @@ with col_map:
             st.session_state.roi_geom = new_geom
             st.session_state.mitigation_level = 0
             st.rerun()
+
 
 
