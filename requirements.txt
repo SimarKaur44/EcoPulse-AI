@@ -3,4 +3,5 @@ geemap==0.35.1
 earthengine-api
 geocoder
 folium
+setuptools
 python-dateutil
