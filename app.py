@@ -1,10 +1,26 @@
 import streamlit as st
 import ee
-import geemap.foliumap as geemap
+import folium
+from folium.plugins import Draw
+from streamlit_folium import st_folium
 import geocoder
-import folium 
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+
+# --- 🌟 THE "HERO" FIX: Bypassing geemap entirely 🌟 ---
+def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
+    map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
+    folium.raster_layers.TileLayer(
+        tiles=map_id_dict['tile_fetcher'].url_format,
+        attr='Google Earth Engine',
+        name=name,
+        overlay=True,
+        control=True,
+        opacity=opacity
+    ).add_to(self)
+
+folium.Map.addLayer = add_ee_layer
+# ---------------------------------------------------------
 
 # 1. High-Tech App Config
 st.set_page_config(layout="wide", page_title="EcoPulse | AI Summit 2026", page_icon="🌍", initial_sidebar_state="collapsed")
@@ -58,7 +74,7 @@ try:
     ee.Initialize(project='ecoplus-iilm')
     if not hasattr(ee.data, '_credentials'): ee.data._credentials = True
 except Exception as e:
-    st.error("Earth Engine Connection Failed.")
+    st.error("Earth Engine Connection Failed. Ensure your Secret Key is added to Streamlit.")
     st.stop()
 
 # 5. Layout Setup
@@ -121,14 +137,12 @@ with col_insight:
             mitigation = st.slider("Investment", 0, 100, st.session_state.mitigation_level, format="%d%%", label_visibility="collapsed", key="mitigation_slider")
             st.session_state.mitigation_level = mitigation 
 
-            # Dynamic Calculations based on slider
-            simulated_drop = (mitigation / 100.0) * 4.5 # Max simulated ambient drop
+            simulated_drop = (mitigation / 100.0) * 4.5 
             
             display_t = round(t_val_base - simulated_drop, 1)
             display_var = round(max(0.5, variance_base - (simulated_drop * 1.1)), 1)
             display_color = "#34D399" if mitigation > 30 else "#F8FAFC"
             
-            # Base Financials
             base_loss = 4.2 if t_val_base > 35 else 2.8 if t_val_base > 28 else 1.1
             sim_loss = round(base_loss - ((mitigation/100) * base_loss * 0.7), 2)
             
@@ -165,7 +179,9 @@ with col_insight:
         st.markdown("<div style='color: #64748B; font-size: 18px; margin-top: 50px;'>Awaiting sector selection...<br>Use the ⬟ tool on the map to outline a campus zone.</div>", unsafe_allow_html=True)
 
 with col_map:
-    m = geemap.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
+    # 🌟 CORE FIX: Using raw, unbreakable Folium 🌟
+    m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
+    Draw(export=True).add_to(m) 
     
     folium.TileLayer(
         tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
@@ -188,17 +204,12 @@ with col_map:
         fixed_max = stats_fixed.get('ST_B10_p95', 40)
         if fixed_max == fixed_min: fixed_max += 1
 
-        # 🌟 4. APPLY SIMULATED COOLING (REALISTIC TEXTURE FIX) 🌟
+        # 4. APPLY SIMULATED COOLING 
         current_mitigation = st.session_state.mitigation_level
-        max_sim_drop = (current_mitigation / 100.0) * 4.5 # Max physical drop of 4.5C on hottest surfaces
+        max_sim_drop = (current_mitigation / 100.0) * 4.5 
         
-        # Normalize the heat map so 0 = coldest areas, 1 = hottest areas
         thermal_norm = thermal_hd.subtract(fixed_min).divide(fixed_max - fixed_min).clamp(0, 1)
-        
-        # Proportional Cooling: Hot red roofs cool down a lot, cool blue trees barely change
         cooling_layer = thermal_norm.multiply(max_sim_drop)
-        
-        # Subtract the smart cooling layer from the original image
         thermal_simulated = thermal_hd.subtract(cooling_layer)
         thermal_final = thermal_simulated.clip(roi)
 
@@ -209,14 +220,14 @@ with col_map:
             'palette': ['#00008B', '#00FFFF', '#00FF00', '#FFFF00', '#FF7F00', '#FF0000', '#800000']
         }
         
-        # Dynamic layer name to force Streamlit redraw
         layer_name = f'Simulation: {current_mitigation}% Investment'
         m.addLayer(thermal_final, vis_params, layer_name, opacity=0.55)
         
         empty_boundary = ee.Image().byte().paint(featureCollection=ee.FeatureCollection([ee.Feature(roi)]), color=1, width=3)
         m.addLayer(empty_boundary, {'palette': ['00FF88']}, 'Target Boundary')
 
-    map_data = m.to_streamlit(height=800, bidirectional=True)
+    # 🌟 NEW: Render map flawlessly using streamlit-folium 🌟
+    map_data = st_folium(m, height=750, use_container_width=True)
 
     if map_data and map_data.get('last_active_drawing'):
         new_geom = map_data['last_active_drawing']['geometry']
