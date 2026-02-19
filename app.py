@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import ee
 import folium
@@ -71,10 +72,20 @@ st.markdown("<div class='header-sub'>AI Summit 2026 Live Demo</div>", unsafe_all
 
 # 4. Engine Init
 try:
+    # 1. Create the hidden Earth Engine folder on the cloud server
+    ee_path = os.path.expanduser('~/.config/earthengine')
+    os.makedirs(ee_path, exist_ok=True)
+    
+    # 2. Extract the secret key from Streamlit's vault and write it to the server
+    with open(os.path.join(ee_path, 'credentials'), 'w') as f:
+        f.write(st.secrets["EARTHENGINE_TOKEN"])
+        
+    # 3. NOW boot up the engine!
     ee.Initialize(project='ecoplus-iilm')
     if not hasattr(ee.data, '_credentials'): ee.data._credentials = True
+
 except Exception as e:
-    st.error("Earth Engine Connection Failed. Ensure your Secret Key is added to Streamlit.")
+    st.error(f"Earth Engine Connection Failed: {e}")
     st.stop()
 
 # 5. Layout Setup
@@ -235,3 +246,4 @@ with col_map:
             st.session_state.roi_geom = new_geom
             st.session_state.mitigation_level = 0
             st.rerun()
+
