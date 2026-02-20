@@ -85,7 +85,8 @@ if st.session_state.app_page == "Home":
     
     st.markdown("<p style='text-align: center; color: #94A3B8; font-size: 18px; max-width: 800px; margin: 0 auto; margin-top: 30px; line-height: 1.6;'>An advanced AI-driven platform designed to monitor, predict, and mitigate Urban Heat Islands. Leveraging Google Earth Engine and high-fidelity thermal telemetry, EcoPulse identifies critical heat sinks and simulates real-time financial ROI for structural cooling investments.</p>", unsafe_allow_html=True)
     
-    st.markdown("<p style='text-align: center; color: #CBD5E1; font-size: 15px; margin-top: 40px;'><b>AI Summit 2026 Live Demo</b><br>Developed by Simarpreet Kaur | B.Tech CSE, IILM University</p>", unsafe_allow_html=True)
+    # 🌟 MODIFIED: Name removed, college name kept
+    st.markdown("<p style='text-align: center; color: #CBD5E1; font-size: 15px; margin-top: 40px;'><b>AI Summit 2026 Live Demo</b><br>Developed by B.Tech CSE, IILM University</p>", unsafe_allow_html=True)
     
     st.markdown("<br><br>", unsafe_allow_html=True)
     
@@ -238,6 +239,12 @@ elif st.session_state.app_page == "Dashboard":
             st.markdown("<div style='color: #64748B; font-size: 18px; margin-top: 50px;'>Awaiting sector selection...<br>Use the ⬟ tool on the map to outline a campus zone.</div>", unsafe_allow_html=True)
 
     with col_map:
+        # 🌟 NEW: Display sample image if no ROI is selected
+        if not st.session_state.roi_geom:
+            st.markdown("### 🔎 Sample Analysis: Supreme Court Area")
+            st.image("sample_thermal_map.png", caption="Thermal Variance Scan showing Urban Heat Island effect around Bharat Mandapam.", use_container_width=True)
+            st.info("Use the drawing tools on the map below to run your own analysis.")
+            
         m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
         Draw(export=True).add_to(m) 
         
