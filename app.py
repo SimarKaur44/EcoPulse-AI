@@ -1,4 +1,3 @@
-import os
 import streamlit as st
 import ee
 import folium
@@ -7,6 +6,7 @@ from streamlit_folium import st_folium
 import geocoder
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import os
 
 # --- 🌟 THE "HERO" FIX: Bypassing geemap entirely 🌟 ---
 def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
@@ -70,17 +70,14 @@ dates = {
 st.markdown("<div class='header-main'>EcoPulse | Global Climate Intelligence</div>", unsafe_allow_html=True)
 st.markdown("<div class='header-sub'>AI Summit 2026 Live Demo</div>", unsafe_allow_html=True)
 
-# 4. Engine Init
+# 4. Engine Init (Cloud Bridge)
 try:
-    # 1. Create the hidden Earth Engine folder on the cloud server
     ee_path = os.path.expanduser('~/.config/earthengine')
     os.makedirs(ee_path, exist_ok=True)
     
-    # 2. Extract the secret key from Streamlit's vault and write it to the server
     with open(os.path.join(ee_path, 'credentials'), 'w') as f:
         f.write(st.secrets["EARTHENGINE_TOKEN"])
         
-    # 3. NOW boot up the engine!
     ee.Initialize(project='ecoplus-iilm')
     if not hasattr(ee.data, '_credentials'): ee.data._credentials = True
 
@@ -237,7 +234,7 @@ with col_map:
         empty_boundary = ee.Image().byte().paint(featureCollection=ee.FeatureCollection([ee.Feature(roi)]), color=1, width=3)
         m.addLayer(empty_boundary, {'palette': ['00FF88']}, 'Target Boundary')
 
-    # 🌟 NEW: Render map flawlessly using streamlit-folium 🌟
+    # 🌟 NEW: Render map flawlessly using streamlit-folium with dynamic key 🌟
     map_data = st_folium(m, height=750, use_container_width=True, key=f"map_update_{st.session_state.mitigation_level}")
 
     if map_data and map_data.get('last_active_drawing'):
@@ -246,6 +243,3 @@ with col_map:
             st.session_state.roi_geom = new_geom
             st.session_state.mitigation_level = 0
             st.rerun()
-
-
-
