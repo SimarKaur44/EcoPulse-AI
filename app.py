@@ -65,7 +65,6 @@ if 'map_center' not in st.session_state: st.session_state.map_center = [28.4610,
 if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 15
 if 'last_search' not in st.session_state: st.session_state.last_search = ""
 if 'mitigation_level' not in st.session_state: st.session_state.mitigation_level = 0
-# 🌟 NEW: Navigation State
 if 'app_page' not in st.session_state: st.session_state.app_page = "Home"
 
 dates = {
@@ -79,16 +78,15 @@ dates = {
 # 🏠 PAGE 1: THE HOMEPAGE
 # ==========================================
 if st.session_state.app_page == "Home":
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center; font-size: 90px; color: #F8FAFC; font-weight: 900; letter-spacing: -2px; margin-bottom: 0px;'>EcoPulse</h1>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align: center; color: #00FF88; font-size: 24px; font-weight: 600; letter-spacing: 4px; text-transform: uppercase; margin-top: -10px;'>Global Climate Intelligence</h3>", unsafe_allow_html=True)
     
     st.markdown("<p style='text-align: center; color: #94A3B8; font-size: 18px; max-width: 800px; margin: 0 auto; margin-top: 30px; line-height: 1.6;'>An advanced AI-driven platform designed to monitor, predict, and mitigate Urban Heat Islands. Leveraging Google Earth Engine and high-fidelity thermal telemetry, EcoPulse identifies critical heat sinks and simulates real-time financial ROI for structural cooling investments.</p>", unsafe_allow_html=True)
     
-    # 🌟 MODIFIED: Name removed, college name kept
-    st.markdown("<p style='text-align: center; color: #CBD5E1; font-size: 15px; margin-top: 40px;'><b>AI Summit 2026 Live Demo</b><br>Developed by B.Tech CSE, IILM University</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #CBD5E1; font-size: 15px; margin-top: 20px;'><b>AI Summit 2026 Live Demo</b><br>Developed by B.Tech CSE, IILM University</p>", unsafe_allow_html=True)
     
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
     
     # Center the launch button
     col1, col2, col3 = st.columns([1, 1, 1])
@@ -99,7 +97,17 @@ if st.session_state.app_page == "Home":
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
         
-    st.markdown("<hr style='margin-top: 80px; opacity: 0.2;'>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # 🌟 NEW: HERO IMAGE CENTERED ON THE FRONT PAGE
+    col_img1, col_img2, col_img3 = st.columns([1, 4, 1])
+    with col_img2:
+        try:
+            st.image("sample_thermal_map.png", caption="Sample Thermal Variance Scan: Supreme Court Area & Bharat Mandapam", use_container_width=True)
+        except Exception:
+            st.warning("Please upload 'sample_thermal_map.png' to your GitHub repository to display the Hero image.")
+        
+    st.markdown("<hr style='margin-top: 50px; opacity: 0.2;'>", unsafe_allow_html=True)
     
     c1, c2, c3 = st.columns(3)
     c1.markdown("<h4 style='color: #60A5FA; text-align: center;'>🛰️ Orbital Telemetry</h4><p style='color: #64748B; text-align: center; font-size: 14px;'>Processes Landsat 9 thermal bands using custom bicubic algorithms to map building-level heat leakage.</p>", unsafe_allow_html=True)
@@ -112,7 +120,6 @@ if st.session_state.app_page == "Home":
 # ==========================================
 elif st.session_state.app_page == "Dashboard":
 
-    # Cloud Bridge (Only initializes when entering dashboard)
     with st.spinner("Establishing secure orbital link..."):
         try:
             ee_path = os.path.expanduser('~/.config/earthengine')
@@ -128,7 +135,6 @@ elif st.session_state.app_page == "Dashboard":
             st.error(f"Earth Engine Connection Failed: {e}")
             st.stop()
 
-    # Dashboard Header
     col_back, col_title = st.columns([0.5, 4])
     with col_back:
         if st.button("⬅ Home"):
@@ -138,7 +144,6 @@ elif st.session_state.app_page == "Dashboard":
         st.markdown("<div class='header-main' style='font-size: 28px; margin-top: -5px;'>EcoPulse | Global Climate Intelligence</div>", unsafe_allow_html=True)
         st.markdown("<div class='header-sub' style='margin-bottom: 15px;'>AI Summit 2026 Live Demo</div>", unsafe_allow_html=True)
 
-    # Dashboard Layout
     col_insight, col_map = st.columns([1.5, 2.5], gap="large")
 
     with col_insight:
@@ -190,7 +195,6 @@ elif st.session_state.app_page == "Dashboard":
                 t_max_val_base = round(t_max_base, 1) if t_max_base else 0
                 variance_base = round(t_max_val_base - t_min_val_base, 1)
                 
-                # 🚀 AI MITIGATION SIMULATOR
                 st.markdown("<div class='section-title' style='color: #3B82F6;'>🧪 AI Mitigation Simulator</div>", unsafe_allow_html=True)
                 st.markdown("<p style='color: #94A3B8; font-size: 13px; margin-top: -5px;'>Drag slider to simulate converting roofs to High-Albedo materials and adding Green Canopy.</p>", unsafe_allow_html=True)
                 
@@ -208,7 +212,6 @@ elif st.session_state.app_page == "Dashboard":
                 
                 st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
                 
-                # DISPLAY METRICS
                 st.markdown("<div class='section-title'>Zone Temperature Profile</div>", unsafe_allow_html=True)
                 st.markdown(f"<div><span class='metric-value' style='color: {display_color};'>{display_t}°C</span></div><div class='metric-label'>Average Surface Temperature (LST)</div>", unsafe_allow_html=True)
                 
@@ -239,12 +242,6 @@ elif st.session_state.app_page == "Dashboard":
             st.markdown("<div style='color: #64748B; font-size: 18px; margin-top: 50px;'>Awaiting sector selection...<br>Use the ⬟ tool on the map to outline a campus zone.</div>", unsafe_allow_html=True)
 
     with col_map:
-        # 🌟 NEW: Display sample image if no ROI is selected
-        if not st.session_state.roi_geom:
-            st.markdown("### 🔎 Sample Analysis: Supreme Court Area")
-            st.image("sample_thermal_map.png", caption="Thermal Variance Scan showing Urban Heat Island effect around Bharat Mandapam.", use_container_width=True)
-            st.info("Use the drawing tools on the map below to run your own analysis.")
-            
         m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
         Draw(export=True).add_to(m) 
         
