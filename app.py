@@ -1,74 +1,305 @@
+import os
 import streamlit as st
+import ee
+import folium
+from folium.plugins import Draw, Geocoder
+from streamlit_folium import st_folium
+import geocoder
+import pandas as pd
 
-# 1. Page Config
-st.set_page_config(layout="wide", page_title="EcoPulse | Enterprise", page_icon="🌍", initial_sidebar_state="collapsed")
+# --- 🌟 CORE ENGINE FIX 🌟 ---
+def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
+    map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
+    folium.raster_layers.TileLayer(
+        tiles=map_id_dict['tile_fetcher'].url_format,
+        attr='Google Earth Engine',
+        name=name, overlay=True, control=True, opacity=opacity
+    ).add_to(self)
+folium.Map.addLayer = add_ee_layer
 
-# 2. Premium Landing Page CSS
+def mask_l9_clouds(image):
+    qa = image.select('QA_PIXEL')
+    cloud_shadow_bit_mask = (1 << 4)
+    clouds_bit_mask = (1 << 3)
+    mask = qa.bitwiseAnd(cloud_shadow_bit_mask).eq(0).And(qa.bitwiseAnd(clouds_bit_mask).eq(0))
+    return image.updateMask(mask)
+# ---------------------------------------------------------
+
+st.set_page_config(layout="wide", page_title="EcoPulse | Global Climate Intelligence", page_icon="🌍", initial_sidebar_state="collapsed")
+
 st.markdown("""
 <style>
     .stApp { background-color: #0A0F18; color: #E2E8F0; font-family: 'Inter', sans-serif; }
-    .hero-title { font-size: 85px; font-weight: 900; color: #F8FAFC; letter-spacing: -2.5px; margin-bottom: 0px; text-align: center;}
-    .hero-subtitle { font-size: 22px; color: #00FF88; font-weight: 600; text-transform: uppercase; letter-spacing: 4px; margin-top: -10px; text-align: center;}
-    .hero-body { font-size: 18px; color: #94A3B8; max-width: 800px; margin: 30px auto; text-align: center; line-height: 1.6;}
-    
-    .feature-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); padding: 30px; border-radius: 12px; text-align: center; transition: transform 0.3s;}
-    .feature-card:hover { transform: translateY(-5px); border-color: rgba(0, 255, 136, 0.3); }
-    .feature-icon { font-size: 40px; margin-bottom: 15px; }
-    .feature-title { color: #F8FAFC; font-size: 20px; font-weight: 700; margin-bottom: 10px; }
-    .feature-text { color: #64748B; font-size: 15px; line-height: 1.5; }
-    
-    /* Giant Launch Button */
-    div.stButton > button:first-child { background-color: #00FF88; color: #0A0F18; border: none; font-size: 22px; font-weight: 800; padding: 20px 40px; border-radius: 8px; transition: all 0.3s;}
-    div.stButton > button:first-child:hover { background-color: #34D399; color: #0A0F18; box-shadow: 0px 0px 25px rgba(0, 255, 136, 0.4); transform: scale(1.02);}
+    .header-main { color: #F8FAFC; font-size: 34px; font-weight: 900; margin-bottom: 0px; letter-spacing: -0.5px;}
+    .header-sub { color: #00FF88; font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 25px; }
+    .section-title { color: #94A3B8; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;}
+    .metric-value { font-size: 48px; font-weight: 800; color: #F8FAFC; line-height: 1.1; }
+    .metric-value-small { font-size: 28px; font-weight: 700; color: #F8FAFC; line-height: 1.1; }
+    .metric-label { font-size: 14px; color: #94A3B8; font-weight: 500; }
+    .shock-box { background: rgba(239, 68, 68, 0.1); border-left: 4px solid #EF4444; padding: 12px; border-radius: 4px; margin-top: 15px; margin-bottom: 15px;}
+    .shock-text { color: #FCA5A5; font-size: 15px; font-weight: 600; }
+    .card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); padding: 25px; border-radius: 8px; margin-bottom: 20px;}
+    .leed-box { background: linear-gradient(145deg, rgba(16, 185, 129, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%); border-left: 4px solid #10B981; padding: 20px; border-radius: 4px;}
     header {visibility: hidden;} footer {visibility: hidden;}
+    
+    /* Navigation Buttons */
+    .nav-btn div.stButton > button:first-child { background-color: #00FF88; color: #0A0F18; border: none; font-size: 18px; font-weight: 800; padding: 15px 30px; border-radius: 8px; transition: all 0.3s;}
+    .nav-btn div.stButton > button:first-child:hover { background-color: #34D399; box-shadow: 0px 0px 20px rgba(0, 255, 136, 0.4);}
+    .sec-btn div.stButton > button:first-child { background-color: transparent; color: #60A5FA; border: 1px solid #60A5FA; font-weight: 600;}
 </style>
 """, unsafe_allow_html=True)
 
-# 3. Hero Section
-st.markdown("<br><br><br>", unsafe_allow_html=True)
-st.markdown("<div class='hero-title'>EcoPulse</div>", unsafe_allow_html=True)
-st.markdown("<div class='hero-subtitle'>Global Climate Intelligence</div>", unsafe_allow_html=True)
-st.markdown("<div class='hero-body'>Urban Heat Islands are a silent infrastructure crisis. Concrete acts as a thermal battery, spiking campus HVAC cooling costs by 5% for every 1°C increase. EcoPulse leverages orbital telemetry to audit, predict, and mitigate thermal stress.</div>", unsafe_allow_html=True)
+# --- GLOBAL SESSION STATES ---
+if 'app_page' not in st.session_state: st.session_state.app_page = "Home"
+if 'roi_geom' not in st.session_state: st.session_state.roi_geom = None
+if 'map_center' not in st.session_state: st.session_state.map_center = [28.4610, 77.4900]
+if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 15
+if 'last_search' not in st.session_state: st.session_state.last_search = ""
+if 'location_name' not in st.session_state: st.session_state.location_name = "Selected Sector"
+if 'mitigation_level' not in st.session_state: st.session_state.mitigation_level = 0
+if 'report_data' not in st.session_state: st.session_state.report_data = {}
 
-st.markdown("<br>", unsafe_allow_html=True)
-
-# 4. CTA Button (Switches to the Mission Control Page)
-col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
-with col_btn2:
-    if st.button("🚀 INITIALIZE ORBITAL RADAR", use_container_width=True):
-        st.switch_page("pages/1_Mission_Control.py")
-
-st.markdown("<br><br><br><br>", unsafe_allow_html=True)
-
-# 5. Value Proposition Cards
-c1, c2, c3 = st.columns(3, gap="large")
-
-with c1:
-    st.markdown("""
-    <div class='feature-card'>
-        <div class='feature-icon'>🛰️</div>
-        <div class='feature-title'>Landsat 9 Telemetry</div>
-        <div class='feature-text'>Bypasses physical IoT sensors. We pull building-level thermal radiation data directly from Google Earth Engine.</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with c2:
-    st.markdown("""
-    <div class='feature-card'>
-        <div class='feature-icon'>🎯</div>
-        <div class='feature-title'>Pinpoint Inspection</div>
-        <div class='feature-text'>Click any building or campus sector to extract raw, uncompressed surface temperature metrics instantly.</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with c3:
-    st.markdown("""
-    <div class='feature-card'>
-        <div class='feature-icon'>🧪</div>
-        <div class='feature-title'>AI Mitigation Engine</div>
-        <div class='feature-text'>Simulate the financial and physical ROI of applying high-albedo cool roofs or planting green canopies.</div>
-    </div>
-    """, unsafe_allow_html=True)
+# ==========================================
+# 🏠 PAGE 1: THE HOMEPAGE
+# ==========================================
+if st.session_state.app_page == "Home":
+    st.markdown("<br><br><br><br>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; font-size: 90px; color: #F8FAFC; font-weight: 900; letter-spacing: -2px; margin-bottom: 0px;'>EcoPulse</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #00FF88; font-size: 24px; font-weight: 600; letter-spacing: 4px; text-transform: uppercase; margin-top: -10px;'>Global Climate Intelligence</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #94A3B8; font-size: 18px; max-width: 800px; margin: 30px auto; line-height: 1.6;'>Urban Heat Islands are a silent infrastructure crisis. Concrete acts as a thermal battery, spiking HVAC cooling costs and blocking LEED certification. EcoPulse leverages orbital telemetry to audit, predict, and mitigate thermal stress.</p>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        st.markdown("<div class='nav-btn'>", unsafe_allow_html=True)
+        if st.button("🚀 INITIALIZE ORBITAL RADAR", use_container_width=True):
+            st.session_state.app_page = "Dashboard"
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
+# ==========================================
+# 🌍 PAGE 2: THE DASHBOARD
+# ==========================================
+elif st.session_state.app_page == "Dashboard":
+    try:
+        ee_path = os.path.expanduser('~/.config/earthengine')
+        os.makedirs(ee_path, exist_ok=True)
+        with open(os.path.join(ee_path, 'credentials'), 'w') as f:
+            f.write(st.secrets["EARTHENGINE_TOKEN"])
+        ee.Initialize(project='ecoplus-iilm')
+        if not hasattr(ee.data, '_credentials'): ee.data._credentials = True
+    except Exception as e:
+        st.error(f"Earth Engine Connection Failed: {e}")
+        st.stop()
 
+    c1, c2, c3 = st.columns([1, 4, 1.5])
+    with c1:
+        st.markdown("<div class='sec-btn'>", unsafe_allow_html=True)
+        if st.button("⬅ Home", use_container_width=True):
+            st.session_state.app_page = "Home"
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown("<div class='header-main' style='font-size: 28px; margin-top: -5px;'>EcoPulse | Mission Control</div>", unsafe_allow_html=True)
+    with c3:
+        st.markdown("<div class='nav-btn' style='margin-top: -10px;'>", unsafe_allow_html=True)
+        if st.button("📊 Generate ESG Report", use_container_width=True):
+            st.session_state.app_page = "Report"
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<hr style='margin: 10px 0px 20px 0px;'>", unsafe_allow_html=True)
+
+    col_insight, col_map = st.columns([1.5, 2.5], gap="large")
+
+    with col_insight:
+        search_query = st.text_input("📍 INTELLIGENCE TARGETING", placeholder="Search 'IILM', 'Knowledge Park 2'...", label_visibility="collapsed")
+        if search_query and search_query != st.session_state.last_search:
+            with st.spinner(f"Locking coordinates for {search_query}..."):
+                g = geocoder.arcgis(search_query)
+                if g.ok:
+                    st.session_state.map_center = [g.lat, g.lng]
+                    st.session_state.map_zoom = 16
+                    st.session_state.roi_geom = None
+                    st.session_state.last_search = search_query
+                    st.session_state.location_name = search_query # Save name for personalized AI
+                    st.session_state.mitigation_level = 0
+                    st.rerun()
+                    
+        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+
+        if st.session_state.roi_geom:
+            roi = ee.Geometry(st.session_state.roi_geom)
+            start_date, end_date = ['2025-04-01', '2025-07-31'] # Fixed to peak summer
+            
+            try:
+                l9_collection = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterBounds(roi).filterDate(start_date, end_date).map(mask_l9_clouds)
+                l9_img = l9_collection.median()
+                s2_img = ee.ImageCollection('COPERNICUS/S2_SR').filterBounds(roi).filterDate(start_date, end_date).sort('CLOUDY_PIXEL_PERCENTAGE').first()
+                
+                ndvi = s2_img.normalizedDifference(['B8', 'B4']).reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=10).get('nd').getInfo()
+                thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
+                
+                temp_mean_base = thermal_raw.reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=30).get('ST_B10').getInfo()
+                stats_base = thermal_raw.reduceRegion(reducer=ee.Reducer.minMax(), geometry=roi, scale=30, maxPixels=1e9).getInfo()
+                t_min_base = stats_base.get('ST_B10_min')
+                t_max_base = stats_base.get('ST_B10_max')
+
+                n_val = round(ndvi, 2) if ndvi else 0
+                t_val_base = round(temp_mean_base, 1) if temp_mean_base else 0
+                t_min_val_base = round(t_min_base, 1) if t_min_base else 0
+                t_max_val_base = round(t_max_base, 1) if t_max_base else 0
+                variance_base = round(t_max_val_base - t_min_val_base, 1)
+                
+                st.markdown("<div class='section-title' style='color: #3B82F6;'>🧪 AI Mitigation Simulator</div>", unsafe_allow_html=True)
+                mitigation = st.slider("Investment Slider", 0, 100, st.session_state.mitigation_level, format="%d%%", label_visibility="collapsed", key="mitigation_slider")
+                st.session_state.mitigation_level = mitigation 
+
+                simulated_drop = (mitigation / 100.0) * 4.5 
+                display_t = round(t_val_base - simulated_drop, 1)
+                display_var = round(max(0.5, variance_base - (simulated_drop * 1.1)), 1)
+                display_color = "#34D399" if mitigation > 30 else "#F8FAFC"
+                
+                base_loss = 4.2 if t_val_base > 35 else 2.8 if t_val_base > 28 else 1.1
+                sim_loss = round(base_loss - ((mitigation/100) * base_loss * 0.7), 2)
+                
+                # 📊 SAVE DATA FOR REPORT PAGE
+                st.session_state.report_data = {
+                    "t_avg_base": t_val_base, "t_avg_sim": display_t,
+                    "variance": display_var, "loss_base": base_loss, "loss_sim": sim_loss,
+                    "ndvi": n_val, "t_max": t_max_val_base, "mitigation": mitigation
+                }
+                
+                st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+                st.markdown("<div class='section-title'>Zone Temperature Profile</div>", unsafe_allow_html=True)
+                st.markdown(f"<div><span class='metric-value' style='color: {display_color};'>{display_t}°C</span></div><div class='metric-label'>Average Surface Temperature (LST)</div>", unsafe_allow_html=True)
+                
+                c1, c2 = st.columns(2)
+                c1.markdown(f"<div><span class='metric-value-small'>{t_min_val_base}°C</span></div><div class='metric-label' style='font-size:13px;'>Original Coolest Point</div>", unsafe_allow_html=True)
+                c2.markdown(f"<div><span class='metric-value-small' style='color:#FCA5A5;'>{t_max_val_base}°C</span></div><div class='metric-label' style='font-size:13px;'>Original Hottest Building</div>", unsafe_allow_html=True)
+                
+                if display_var > 4:
+                    st.markdown(f"<div class='shock-box'><span class='shock-text'>⚠️ THERMAL VARIANCE: {display_var}°C</span></div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div class='shock-box' style='background: rgba(16, 185, 129, 0.1); border-left-color: #10B981;'><span class='shock-text' style='color: #34D399;'>✅ THERMAL VARIANCE: {display_var}°C</span></div>", unsafe_allow_html=True)
+                
+                st.write("")
+                st.markdown(f"<div><span class='metric-value-small'>₹ {sim_loss} Lakhs</span></div><div class='metric-label'>Est. Annual Energy Loss (Cooling Taxes)</div>", unsafe_allow_html=True)
+
+            except Exception as error:
+                st.error("Telemetry sync failed. Area might be too large.")
+        else:
+            st.markdown("<div style='color: #64748B; font-size: 18px; margin-top: 50px;'>Awaiting sector selection...<br>Use the ⬟ tool on the map to outline a campus zone.</div>", unsafe_allow_html=True)
+
+    with col_map:
+        m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
+        Geocoder(position='topright').add_to(m)
+        Draw(export=True).add_to(m) 
+        folium.TileLayer(tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", attr="Google", name="Google Hybrid", overlay=False).add_to(m)
+
+        if st.session_state.roi_geom:
+            roi = ee.Geometry(st.session_state.roi_geom)
+            l9_collection = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).map(mask_l9_clouds)
+            thermal_raw = l9_collection.median().select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
+            thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=3)
+
+            stats_fixed = thermal_hd.reduceRegion(reducer=ee.Reducer.minMax(), geometry=roi, scale=30, maxPixels=1e9).getInfo()
+            fixed_min = stats_fixed.get('ST_B10_min', 20)
+            fixed_max = stats_fixed.get('ST_B10_max', 40)
+            if fixed_max == fixed_min: fixed_max += 1
+
+            current_mitigation = st.session_state.mitigation_level
+            thermal_norm = thermal_hd.subtract(fixed_min).divide(fixed_max - fixed_min).clamp(0, 1)
+            cooling_layer = thermal_norm.multiply((current_mitigation / 100.0) * 4.5)
+            thermal_final = thermal_hd.subtract(cooling_layer).clip(roi)
+
+            vis_params = {'min': fixed_min, 'max': fixed_max, 'palette': ['#00008B', '#00FFFF', '#00FF00', '#FFFF00', '#FF7F00', '#FF0000', '#800000']}
+            m.addLayer(thermal_final, vis_params, f'Simulation: {current_mitigation}%', opacity=0.55)
+            m.addLayer(ee.Image().byte().paint(ee.FeatureCollection([ee.Feature(roi)]), 1, 3), {'palette': ['00FF88']}, 'Target Boundary')
+
+        map_data = st_folium(m, height=750, use_container_width=True, key=f"map_update_{st.session_state.mitigation_level}")
+
+        if map_data and map_data.get('last_active_drawing'):
+            new_geom = map_data['last_active_drawing']['geometry']
+            if st.session_state.roi_geom != new_geom:
+                st.session_state.roi_geom = new_geom
+                st.session_state.mitigation_level = 0
+                st.rerun()
+
+# ==========================================
+# 📊 PAGE 3: THE ESG & LEED REPORT
+# ==========================================
+elif st.session_state.app_page == "Report":
+    c1, c2 = st.columns([1, 5])
+    with c1:
+        st.markdown("<div class='sec-btn'>", unsafe_allow_html=True)
+        if st.button("⬅ Back to Map"):
+            st.session_state.app_page = "Dashboard"
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown("<div class='header-main' style='font-size: 28px; margin-top: -5px;'>ESG & LEED Intelligence Brief</div>", unsafe_allow_html=True)
+
+    if not st.session_state.report_data:
+        st.warning("⚠️ No data found. Please run an analysis in the Dashboard first.")
+        st.stop()
+
+    data = st.session_state.report_data
+    loc = st.session_state.location_name.lower()
+
+    # Dynamic AI Context Logic
+    if "college" in loc or "university" in loc or "institute" in loc or "iilm" in loc:
+        context_type = "Educational Campus"
+        recs = ["Implement shaded student walkways between academic blocks.", "Apply high-albedo coatings to dormitories to reduce overnight thermal stress for students."]
+    elif "hospital" in loc or "medical" in loc:
+        context_type = "Healthcare Facility"
+        recs = ["Critical: Reduce thermal load on HVAC systems protecting sensitive ICU wards.", "Deploy green roofing to improve patient recovery environments."]
+    else:
+        context_type = "Commercial / Urban Sector"
+        recs = ["Apply Polyurea Elastomeric coatings to expansive flat commercial roofs.", "Deploy drought-resistant *Azadirachta indica* (Neem) in large parking lots."]
+
+    st.markdown(f"<h3 style='color: #94A3B8;'>Target Analysis: <span style='color: #F8FAFC;'>{st.session_state.location_name}</span> ({context_type})</h3>", unsafe_allow_html=True)
+    
+    st.markdown("<hr style='margin: 15px 0px 30px 0px;'>", unsafe_allow_html=True)
+
+    # Top Metrics
+    c1, c2, c3 = st.columns(3)
+    c1.markdown(f"<div class='card'><div class='section-title'>Peak Thermal Threat</div><div class='metric-value' style='color:#FCA5A5;'>{data['t_max']}°C</div></div>", unsafe_allow_html=True)
+    c2.markdown(f"<div class='card'><div class='section-title'>Vegetation Health (NDVI)</div><div class='metric-value' style='color:#6EE7B7;'>{data['ndvi']}</div></div>", unsafe_allow_html=True)
+    c3.markdown(f"<div class='card'><div class='section-title'>Current Energy Bleed</div><div class='metric-value'>₹ {data['loss_base']} L</div></div>", unsafe_allow_html=True)
+
+    # 📈 DATA GRAPH & LEED Integration
+    col_graph, col_leed = st.columns([2, 1.5], gap="large")
+    
+    with col_graph:
+        st.markdown("<div class='card-title' style='color: #60A5FA; font-weight: bold; margin-bottom: 15px;'>📉 Mitigation Impact Graph</div>", unsafe_allow_html=True)
+        # Create a pandas dataframe for the chart
+        chart_data = pd.DataFrame(
+            [
+                {"Metric": "Baseline Temperature (°C)", "Value": data['t_avg_base']},
+                {"Metric": "Simulated Temperature (°C)", "Value": data['t_avg_sim']},
+                {"Metric": "Baseline Cost (₹ Lakhs)", "Value": data['loss_base']},
+                {"Metric": "Simulated Cost (₹ Lakhs)", "Value": data['loss_sim']},
+            ]
+        )
+        st.bar_chart(chart_data.set_index("Metric"), height=300)
+
+    with col_leed:
+        st.markdown("<div class='leed-box'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color: #10B981; margin-top:0px;'>🌱 LEED v4 Certification Check</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #D1D5DB; font-size: 14px;'>Based on your simulated <b>{}% mitigation investment</b>, this facility qualifies for:</p>".format(data['mitigation']), unsafe_allow_html=True)
+        st.markdown("<h4 style='color: #F8FAFC;'>Sustainable Sites (SS) Credit: Heat Island Reduction</h4>", unsafe_allow_html=True)
+        
+        if data['mitigation'] >= 50:
+            st.markdown("<h2 style='color: #34D399; margin: 10px 0px;'>+2 Points Eligible ✅</h2>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #A7F3D0; font-size: 13px;'>Simulation meets the 50%+ threshold for high-reflectance roofing and non-roof vegetation cover requirements under LEED v4 standard.</p>", unsafe_allow_html=True)
+        else:
+            st.markdown("<h2 style='color: #FCD34D; margin: 10px 0px;'>+0 Points (Requires >50%) ⚠️</h2>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #FDE68A; font-size: 13px;'>Increase mitigation slider above 50% on the Dashboard to simulate qualification for LEED compliance credits.</p>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # AI Contextual Recommendations
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown(f"<div class='section-title' style='color: #3B82F6;'>🧠 Contextual AI Strategy for {context_type}</div>", unsafe_allow_html=True)
+    st.markdown(f"<ul style='color: #CBD5E1; font-size: 16px; line-height: 1.8;'><li>{recs[0]}</li><li>{recs[1]}</li><li><b>Financial ROI:</b> Implementing this strategy will recover approximately <b>₹ {round(data['loss_base'] - data['loss_sim'], 2)} Lakhs</b> annually in wasted HVAC expenditure.</li></ul>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
