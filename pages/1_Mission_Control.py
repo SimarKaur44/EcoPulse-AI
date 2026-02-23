@@ -182,7 +182,7 @@ with col_map:
         roi = ee.Geometry(st.session_state.roi_geom)
         l9_collection = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).map(mask_l9_clouds)
         thermal_raw = l9_collection.median().select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
-        thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=3)
+        thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=15)
 
         stats_fixed = thermal_hd.reduceRegion(reducer=ee.Reducer.minMax(), geometry=roi, scale=30, maxPixels=1e9).getInfo()
         fixed_min = stats_fixed.get('ST_B10_min', 20)
@@ -218,6 +218,7 @@ with col_map:
         if st.session_state.clicked_coords != new_coords:
             st.session_state.clicked_coords = new_coords
             st.rerun()
+
 
 
 
