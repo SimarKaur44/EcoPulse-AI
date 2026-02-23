@@ -1,296 +1,71 @@
-import os
 import streamlit as st
-import ee
-import folium
-from folium.plugins import Draw, Geocoder
-from streamlit_folium import st_folium
-import geocoder
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
 
-# --- 🌟 THE "HERO" FIX: Bypassing geemap entirely 🌟 ---
-def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
-    map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
-    folium.raster_layers.TileLayer(
-        tiles=map_id_dict['tile_fetcher'].url_format,
-        attr='Google Earth Engine',
-        name=name,
-        overlay=True,
-        control=True,
-        opacity=opacity
-    ).add_to(self)
+# 1. Page Config
+st.set_page_config(layout="wide", page_title="EcoPulse | Enterprise", page_icon="🌍", initial_sidebar_state="collapsed")
 
-folium.Map.addLayer = add_ee_layer
-
-# --- CLOUD MASKING FUNCTION ---
-def mask_l9_clouds(image):
-    qa = image.select('QA_PIXEL')
-    cloud_shadow_bit_mask = (1 << 4)
-    clouds_bit_mask = (1 << 3)
-    mask = qa.bitwiseAnd(cloud_shadow_bit_mask).eq(0).And(qa.bitwiseAnd(clouds_bit_mask).eq(0))
-    return image.updateMask(mask)
-# ---------------------------------------------------------
-
-# 1. High-Tech App Config
-st.set_page_config(layout="wide", page_title="EcoPulse | Core Engine", page_icon="🌍", initial_sidebar_state="collapsed")
-
-# 2. Premium "Enterprise SaaS" CSS Injection
+# 2. Premium Landing Page CSS
 st.markdown("""
 <style>
-    .block-container { padding-top: 1.5rem; padding-bottom: 0rem; padding-left: 3rem; padding-right: 3rem; max-width: 100%; }
     .stApp { background-color: #0A0F18; color: #E2E8F0; font-family: 'Inter', sans-serif; }
-    hr { border-top: 1px solid rgba(255, 255, 255, 0.1); margin-top: 1.5rem; margin-bottom: 1.5rem; }
-    .header-main { color: #F8FAFC; font-size: 34px; font-weight: 800; margin-bottom: 0px; letter-spacing: -0.5px;}
-    .header-sub { color: #00FF88; font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 25px; }
-    .section-title { color: #94A3B8; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;}
-    .metric-value { font-size: 56px; font-weight: 800; color: #F8FAFC; line-height: 1.1; transition: color 0.3s; }
-    .metric-value-small { font-size: 28px; font-weight: 700; color: #F8FAFC; line-height: 1.1; }
-    .metric-label { font-size: 16px; color: #94A3B8; font-weight: 500; }
-    .shock-box { background: rgba(239, 68, 68, 0.1); border-left: 4px solid #EF4444; padding: 12px; border-radius: 4px; margin-top: 15px; margin-bottom: 15px;}
-    .shock-text { color: #FCA5A5; font-size: 15px; font-weight: 600; }
-    .badge-high { background-color: rgba(239, 68, 68, 0.15); color: #FCA5A5; padding: 6px 12px; border-radius: 12px; font-size: 13px; font-weight: 700; border: 1px solid rgba(239, 68, 68, 0.3); }
-    .badge-warn { background-color: rgba(245, 158, 11, 0.15); color: #FCD34D; padding: 6px 12px; border-radius: 12px; font-size: 13px; font-weight: 700; border: 1px solid rgba(245, 158, 11, 0.3); }
-    .badge-good { background-color: rgba(16, 185, 129, 0.15); color: #6EE7B7; padding: 6px 12px; border-radius: 12px; font-size: 13px; font-weight: 700; border: 1px solid rgba(16, 185, 129, 0.3); }
-    div.stButton > button:first-child { background-color: transparent; color: #F87171; border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; font-weight: 600; }
-    div.stButton > button:first-child:hover { background-color: rgba(239, 68, 68, 0.1); border: 1px solid #EF4444; }
+    .hero-title { font-size: 85px; font-weight: 900; color: #F8FAFC; letter-spacing: -2.5px; margin-bottom: 0px; text-align: center;}
+    .hero-subtitle { font-size: 22px; color: #00FF88; font-weight: 600; text-transform: uppercase; letter-spacing: 4px; margin-top: -10px; text-align: center;}
+    .hero-body { font-size: 18px; color: #94A3B8; max-width: 800px; margin: 30px auto; text-align: center; line-height: 1.6;}
+    
+    .feature-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); padding: 30px; border-radius: 12px; text-align: center; transition: transform 0.3s;}
+    .feature-card:hover { transform: translateY(-5px); border-color: rgba(0, 255, 136, 0.3); }
+    .feature-icon { font-size: 40px; margin-bottom: 15px; }
+    .feature-title { color: #F8FAFC; font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+    .feature-text { color: #64748B; font-size: 15px; line-height: 1.5; }
+    
+    /* Giant Launch Button */
+    div.stButton > button:first-child { background-color: #00FF88; color: #0A0F18; border: none; font-size: 22px; font-weight: 800; padding: 20px 40px; border-radius: 8px; transition: all 0.3s;}
+    div.stButton > button:first-child:hover { background-color: #34D399; color: #0A0F18; box-shadow: 0px 0px 25px rgba(0, 255, 136, 0.4); transform: scale(1.02);}
     header {visibility: hidden;} footer {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
-# --- GLOBAL SESSION STATES ---
-if 'roi_geom' not in st.session_state: st.session_state.roi_geom = None
-if 'map_center' not in st.session_state: st.session_state.map_center = [28.4610, 77.4900]
-if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 15
-if 'last_search' not in st.session_state: st.session_state.last_search = ""
-if 'mitigation_level' not in st.session_state: st.session_state.mitigation_level = 0
-if 'clicked_coords' not in st.session_state: st.session_state.clicked_coords = None 
+# 3. Hero Section
+st.markdown("<br><br><br>", unsafe_allow_html=True)
+st.markdown("<div class='hero-title'>EcoPulse</div>", unsafe_allow_html=True)
+st.markdown("<div class='hero-subtitle'>Global Climate Intelligence</div>", unsafe_allow_html=True)
+st.markdown("<div class='hero-body'>Urban Heat Islands are a silent infrastructure crisis. Concrete acts as a thermal battery, spiking campus HVAC cooling costs by 5% for every 1°C increase. EcoPulse leverages orbital telemetry to audit, predict, and mitigate thermal stress.</div>", unsafe_allow_html=True)
 
-dates = {
-    "Jan - Mar 2025 (Spring/Baseline)": ['2025-01-01', '2025-03-31'],
-    "Apr - Jul 2025 (Peak Summer)": ['2025-04-01', '2025-07-31'],
-    "Jan - Mar 2024 (Historical Spring)": ['2024-01-01', '2024-03-31'],
-    "Apr - Jul 2024 (Historical Summer)": ['2024-04-01', '2024-07-31'],
-}
+st.markdown("<br>", unsafe_allow_html=True)
 
-# 3. Clean Top Header
-st.markdown("<div class='header-main'>EcoPulse | Global Climate Intelligence</div>", unsafe_allow_html=True)
-st.markdown("<div class='header-sub'>Orbital Telemetry & Mitigation Engine</div>", unsafe_allow_html=True)
+# 4. CTA Button (Switches to the Mission Control Page)
+col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+with col_btn2:
+    if st.button("🚀 INITIALIZE ORBITAL RADAR", use_container_width=True):
+        st.switch_page("pages/1_🌍_Mission_Control.py")
 
-# 4. Engine Init
-try:
-    ee_path = os.path.expanduser('~/.config/earthengine')
-    os.makedirs(ee_path, exist_ok=True)
-    with open(os.path.join(ee_path, 'credentials'), 'w') as f:
-        f.write(st.secrets["EARTHENGINE_TOKEN"])
-    ee.Initialize(project='ecoplus-iilm')
-    if not hasattr(ee.data, '_credentials'): ee.data._credentials = True
-except Exception as e:
-    st.error(f"Earth Engine Connection Failed: {e}")
-    st.stop()
+st.markdown("<br><br><br><br>", unsafe_allow_html=True)
 
-# 5. Layout Setup
-col_insight, col_map = st.columns([1.5, 2.5], gap="large")
+# 5. Value Proposition Cards
+c1, c2, c3 = st.columns(3, gap="large")
 
-with col_insight:
-    # Kept the manual search just in case, but map search is better
-    search_query = st.text_input("📍 MANUAL TARGET OVERRIDE", placeholder="Or use the live search bar directly on the map ➡️", label_visibility="collapsed")
-    if search_query and search_query != st.session_state.last_search:
-        with st.spinner(f"Locking coordinates for {search_query}..."):
-            g = geocoder.arcgis(search_query)
-            if g.ok:
-                st.session_state.map_center = [g.lat, g.lng]
-                st.session_state.map_zoom = 16
-                st.session_state.roi_geom = None
-                st.session_state.last_search = search_query
-                st.session_state.mitigation_level = 0
-                st.session_state.clicked_coords = None
-                st.rerun()
-                
-    st.write("")
-    st.markdown("<div class='section-title'>Orbital Timeframe Filter</div>", unsafe_allow_html=True)
-    
-    col_time, col_clear = st.columns([3, 1.5])
-    with col_time:
-        timeframe = st.selectbox("Timeframe", list(dates.keys()), label_visibility="collapsed")
-        start_date, end_date = dates[timeframe]
-    with col_clear:
-        if st.button("🗑️ Clear Scan", use_container_width=True):
-            st.session_state.roi_geom = None
-            st.session_state.mitigation_level = 0
-            st.session_state.clicked_coords = None
-            st.rerun()
+with c1:
+    st.markdown("""
+    <div class='feature-card'>
+        <div class='feature-icon'>🛰️</div>
+        <div class='feature-title'>Landsat 9 Telemetry</div>
+        <div class='feature-text'>Bypasses physical IoT sensors. We pull building-level thermal radiation data directly from Google Earth Engine.</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("<hr>", unsafe_allow_html=True)
+with c2:
+    st.markdown("""
+    <div class='feature-card'>
+        <div class='feature-icon'>🎯</div>
+        <div class='feature-title'>Pinpoint Inspection</div>
+        <div class='feature-text'>Click any building or campus sector to extract raw, uncompressed surface temperature metrics instantly.</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    if st.session_state.roi_geom:
-        roi = ee.Geometry(st.session_state.roi_geom)
-        
-        try:
-            # 🌟 CLOUD MASKING & MEDIAN COMPOSITE APPLIED HERE 🌟
-            l9_collection = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterBounds(roi).filterDate(start_date, end_date).map(mask_l9_clouds)
-            l9_img = l9_collection.median() # Much safer than first()
-            
-            s2_img = ee.ImageCollection('COPERNICUS/S2_SR').filterBounds(roi).filterDate(start_date, end_date).sort('CLOUDY_PIXEL_PERCENTAGE').first()
-            
-            ndvi = s2_img.normalizedDifference(['B8', 'B4']).reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=10).get('nd').getInfo()
-            thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
-            
-            # 🌟 ABSOLUTE MIN/MAX MATH (No Percentiles) 🌟
-            temp_mean_base = thermal_raw.reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=30).get('ST_B10').getInfo()
-            stats_base = thermal_raw.reduceRegion(reducer=ee.Reducer.minMax(), geometry=roi, scale=30, maxPixels=1e9).getInfo()
-            t_min_base = stats_base.get('ST_B10_min')
-            t_max_base = stats_base.get('ST_B10_max')
-
-            n_val = round(ndvi, 2) if ndvi else 0
-            t_val_base = round(temp_mean_base, 1) if temp_mean_base else 0
-            t_min_val_base = round(t_min_base, 1) if t_min_base else 0
-            t_max_val_base = round(t_max_base, 1) if t_max_base else 0
-            variance_base = round(t_max_val_base - t_min_val_base, 1)
-            
-            # 🚀 AI MITIGATION SIMULATOR
-            st.markdown("<div class='section-title' style='color: #3B82F6;'>🧪 AI Mitigation Simulator</div>", unsafe_allow_html=True)
-            st.markdown("<p style='color: #94A3B8; font-size: 13px; margin-top: -5px;'>Drag slider to simulate converting roofs to High-Albedo materials and adding Green Canopy.</p>", unsafe_allow_html=True)
-            
-            mitigation = st.slider("Investment", 0, 100, st.session_state.mitigation_level, format="%d%%", label_visibility="collapsed", key="mitigation_slider")
-            st.session_state.mitigation_level = mitigation 
-
-            simulated_drop = (mitigation / 100.0) * 4.5 
-            
-            display_t = round(t_val_base - simulated_drop, 1)
-            display_var = round(max(0.5, variance_base - (simulated_drop * 1.1)), 1)
-            display_color = "#34D399" if mitigation > 30 else "#F8FAFC"
-            
-            base_loss = 4.2 if t_val_base > 35 else 2.8 if t_val_base > 28 else 1.1
-            sim_loss = round(base_loss - ((mitigation/100) * base_loss * 0.7), 2)
-            
-            st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
-            
-            # DISPLAY METRICS
-            st.markdown("<div class='section-title'>Zone Temperature Profile</div>", unsafe_allow_html=True)
-            st.markdown(f"<div><span class='metric-value' style='color: {display_color};'>{display_t}°C</span></div><div class='metric-label'>Average Surface Temperature (LST)</div>", unsafe_allow_html=True)
-            
-            c1, c2 = st.columns(2)
-            c1.markdown(f"<div><span class='metric-value-small'>{t_min_val_base}°C</span></div><div class='metric-label' style='font-size:13px;'>Original Coolest Point</div>", unsafe_allow_html=True)
-            c2.markdown(f"<div><span class='metric-value-small' style='color:#FCA5A5;'>{t_max_val_base}°C</span></div><div class='metric-label' style='font-size:13px;'>Original Hottest Building</div>", unsafe_allow_html=True)
-            
-            if display_var > 4:
-                st.markdown(f"<div class='shock-box'><span class='shock-text'>⚠️ THERMAL VARIANCE: {display_var}°C</span><br><span style='color:#CBD5E1; font-size: 13px;'>Massive heat difference persists.</span></div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div class='shock-box' style='background: rgba(16, 185, 129, 0.1); border-left-color: #10B981;'><span class='shock-text' style='color: #34D399;'>✅ THERMAL VARIANCE: {display_var}°C</span><br><span style='color:#CBD5E1; font-size: 13px;'>Temperatures stabilized across the sector.</span></div>", unsafe_allow_html=True)
-            
-            st.write("")
-            st.markdown(f"<div><span class='metric-value-small'>₹ {sim_loss} Lakhs</span></div><div class='metric-label'>Est. Annual Energy Loss (Cooling Taxes)</div>", unsafe_allow_html=True)
-            
-            # 🎯 PINPOINT TELEMETRY UI
-            st.markdown("<hr style='margin-top: 15px; margin-bottom: 15px;'>", unsafe_allow_html=True)
-            st.markdown("<div class='section-title' style='color: #F87171;'>📍 Pinpoint Inspection</div>", unsafe_allow_html=True)
-            
-            if st.session_state.clicked_coords:
-                p_lat, p_lng = st.session_state.clicked_coords
-                click_point = ee.Geometry.Point([p_lng, p_lat])
-                
-                # Extract exact temp from satellite
-                thermal_clipped = thermal_raw.clip(roi)
-                val_dict = thermal_clipped.reduceRegion(reducer=ee.Reducer.mean(), geometry=click_point, scale=3).getInfo()
-                point_temp_raw = val_dict.get('ST_B10')
-                
-                if point_temp_raw is not None:
-                    point_norm = max(0, min(1, (point_temp_raw - t_min_val_base) / (t_max_val_base - t_min_val_base))) if t_max_val_base > t_min_val_base else 0
-                    point_cooling = point_norm * simulated_drop
-                    final_point_temp = round(point_temp_raw - point_cooling, 1)
-                    
-                    st.markdown(f"<div class='shock-box' style='background: rgba(248, 113, 113, 0.1); border-left-color: #F87171;'><span class='shock-text' style='color: #FCA5A5;'>🎯 TARGET LOCKED: {final_point_temp}°C</span><br><span style='color:#CBD5E1; font-size: 13px;'>Lat: {round(p_lat, 4)} | Lng: {round(p_lng, 4)}</span></div>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<div style='color: #94A3B8; font-size: 14px;'>Target out of bounds. Click inside the highlighted area.</div>", unsafe_allow_html=True)
-            else:
-                st.markdown("<div style='color: #94A3B8; font-size: 14px;'>Click any building on the map to extract its exact surface temperature.</div>", unsafe_allow_html=True)
-
-            st.markdown("<hr>", unsafe_allow_html=True)
-
-            st.markdown("<div class='section-title'>Risk Summary</div>", unsafe_allow_html=True)
-            heat_badge = "badge-high'>HIGH RISK 🔴" if display_var > 8 else "badge-warn'>ELEVATED 🟠" if display_var > 4 else "badge-good'>STABLE 🟢"
-            green_badge = "badge-high'>CRITICAL 🔴" if n_val < 0.15 else "badge-warn'>MODERATE 🟠" if n_val < 0.35 else "badge-good'>HEALTHY 🟢"
-            
-            col_b1, col_b2 = st.columns(2)
-            col_b1.markdown(f"<span class='{heat_badge}</span>", unsafe_allow_html=True)
-            col_b2.markdown(f"<span class='{green_badge}</span>", unsafe_allow_html=True)
-
-        except Exception as error:
-            st.error("Telemetry sync failed. Area might be too large or lack clear satellite data for those dates.")
-    else:
-        st.markdown("<div style='color: #64748B; font-size: 18px; margin-top: 50px;'>Awaiting sector selection...<br>Use the ⬟ tool on the map to outline a campus zone.</div>", unsafe_allow_html=True)
-
-with col_map:
-    m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
-    
-    # 🌟 NEW: LIVE AUTOCOMPLETE SEARCH BAR IN MAP 🌟
-    Geocoder(position='topright').add_to(m)
-    
-    Draw(export=True).add_to(m) 
-    
-    # 🌟 LABELS ARE BACK ON (lyrs=y) 🌟
-    folium.TileLayer(
-        tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-        attr="Google", name="Google Hybrid", overlay=False, control=True
-    ).add_to(m)
-
-    if st.session_state.roi_geom:
-        roi = ee.Geometry(st.session_state.roi_geom)
-        
-        # Cloud masked fetching
-        l9_collection = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).map(mask_l9_clouds)
-        l9_img = l9_collection.median()
-        
-        thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
-        thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=3)
-
-        # Absolute MinMax for map scaling
-        stats_fixed = thermal_hd.reduceRegion(reducer=ee.Reducer.minMax(), geometry=roi, scale=30, maxPixels=1e9).getInfo()
-        fixed_min = stats_fixed.get('ST_B10_min', 20)
-        fixed_max = stats_fixed.get('ST_B10_max', 40)
-        if fixed_max == fixed_min: fixed_max += 1
-
-        current_mitigation = st.session_state.mitigation_level
-        max_sim_drop = (current_mitigation / 100.0) * 4.5 
-        
-        thermal_norm = thermal_hd.subtract(fixed_min).divide(fixed_max - fixed_min).clamp(0, 1)
-        cooling_layer = thermal_norm.multiply(max_sim_drop)
-        thermal_simulated = thermal_hd.subtract(cooling_layer)
-        thermal_final = thermal_simulated.clip(roi)
-
-        vis_params = {
-            'min': fixed_min, 
-            'max': fixed_max, 
-            'palette': ['#00008B', '#00FFFF', '#00FF00', '#FFFF00', '#FF7F00', '#FF0000', '#800000']
-        }
-        
-        layer_name = f'Simulation: {current_mitigation}% Investment'
-        m.addLayer(thermal_final, vis_params, layer_name, opacity=0.55)
-        
-        empty_boundary = ee.Image().byte().paint(featureCollection=ee.FeatureCollection([ee.Feature(roi)]), color=1, width=3)
-        m.addLayer(empty_boundary, {'palette': ['00FF88']}, 'Target Boundary')
-        
-        if st.session_state.clicked_coords:
-            folium.Marker(
-                st.session_state.clicked_coords,
-                icon=folium.Icon(color="red", icon="crosshairs", prefix='fa')
-            ).add_to(m)
-
-    map_data = st_folium(m, height=750, use_container_width=True, key=f"map_update_{st.session_state.mitigation_level}")
-
-    if map_data and map_data.get('last_active_drawing'):
-        new_geom = map_data['last_active_drawing']['geometry']
-        if st.session_state.roi_geom != new_geom:
-            st.session_state.roi_geom = new_geom
-            st.session_state.mitigation_level = 0
-            st.session_state.clicked_coords = None 
-            st.rerun()
-
-    if map_data and map_data.get('last_clicked'):
-        clicked_lat = map_data['last_clicked']['lat']
-        clicked_lng = map_data['last_clicked']['lng']
-        new_coords = [clicked_lat, clicked_lng]
-        
-        if st.session_state.clicked_coords != new_coords:
-            st.session_state.clicked_coords = new_coords
-            st.rerun()
+with c3:
+    st.markdown("""
+    <div class='feature-card'>
+        <div class='feature-icon'>🧪</div>
+        <div class='feature-title'>AI Mitigation Engine</div>
+        <div class='feature-text'>Simulate the financial and physical ROI of applying high-albedo cool roofs or planting green canopies.</div>
+    </div>
+    """, unsafe_allow_html=True)
