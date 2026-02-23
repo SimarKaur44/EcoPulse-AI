@@ -58,6 +58,7 @@ if 'map_center' not in st.session_state: st.session_state.map_center = [28.4610,
 if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 15
 if 'last_search' not in st.session_state: st.session_state.last_search = ""
 if 'mitigation_level' not in st.session_state: st.session_state.mitigation_level = 0
+if 'clicked_coords' not in st.session_state: st.session_state.clicked_coords = None # 🎯 NEW: Stores click location
 
 dates = {
     "Jan - Mar 2025 (Spring/Baseline)": ['2025-01-01', '2025-03-31'],
@@ -102,6 +103,7 @@ with col_insight:
                 st.session_state.roi_geom = None
                 st.session_state.last_search = search_query
                 st.session_state.mitigation_level = 0
+                st.session_state.clicked_coords = None
                 st.rerun()
                 
     st.write("")
@@ -115,6 +117,7 @@ with col_insight:
         if st.button("🗑️ Clear Scan", use_container_width=True):
             st.session_state.roi_geom = None
             st.session_state.mitigation_level = 0
+            st.session_state.clicked_coords = None
             st.rerun()
 
     st.markdown("<hr>", unsafe_allow_html=True)
@@ -174,6 +177,32 @@ with col_insight:
             
             st.write("")
             st.markdown(f"<div><span class='metric-value-small'>₹ {sim_loss} Lakhs</span></div><div class='metric-label'>Est. Annual Energy Loss (Cooling Taxes)</div>", unsafe_allow_html=True)
+            
+            # 🎯 NEW: PINPOINT TELEMETRY UI
+            st.markdown("<hr style='margin-top: 15px; margin-bottom: 15px;'>", unsafe_allow_html=True)
+            st.markdown("<div class='section-title' style='color: #F87171;'>📍 Pinpoint Inspection</div>", unsafe_allow_html=True)
+            
+            if st.session_state.clicked_coords:
+                p_lat, p_lng = st.session_state.clicked_coords
+                click_point = ee.Geometry.Point([p_lng, p_lat])
+                
+                # Extract exact temp from satellite
+                thermal_clipped = thermal_raw.clip(roi)
+                val_dict = thermal_clipped.reduceRegion(reducer=ee.Reducer.mean(), geometry=click_point, scale=3).getInfo()
+                point_temp_raw = val_dict.get('ST_B10')
+                
+                if point_temp_raw is not None:
+                    # Apply simulation drop to this specific point
+                    point_norm = max(0, min(1, (point_temp_raw - t_min_val_base) / (t_max_val_base - t_min_val_base))) if t_max_val_base > t_min_val_base else 0
+                    point_cooling = point_norm * simulated_drop
+                    final_point_temp = round(point_temp_raw - point_cooling, 1)
+                    
+                    st.markdown(f"<div class='shock-box' style='background: rgba(248, 113, 113, 0.1); border-left-color: #F87171;'><span class='shock-text' style='color: #FCA5A5;'>🎯 TARGET LOCKED: {final_point_temp}°C</span><br><span style='color:#CBD5E1; font-size: 13px;'>Lat: {round(p_lat, 4)} | Lng: {round(p_lng, 4)}</span></div>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<div style='color: #94A3B8; font-size: 14px;'>Target out of bounds. Click inside the highlighted area.</div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<div style='color: #94A3B8; font-size: 14px;'>Click any building on the map to extract its exact surface temperature.</div>", unsafe_allow_html=True)
+
             st.markdown("<hr>", unsafe_allow_html=True)
 
             st.markdown("<div class='section-title'>Risk Summary</div>", unsafe_allow_html=True)
@@ -190,32 +219,33 @@ with col_insight:
         st.markdown("<div style='color: #64748B; font-size: 18px; margin-top: 50px;'>Awaiting sector selection...<br>Use the ⬟ tool on the map to outline a campus zone.</div>", unsafe_allow_html=True)
 
 with col_map:
-    # 🌟 CORE FIX: Using raw, unbreakable Folium 🌟
+    # 🌟 Using raw, unbreakable Folium 🌟
     m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
     Draw(export=True).add_to(m) 
     
+    # Using satellite view without labels (lyrs=s)
     folium.TileLayer(
-        tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-        attr="Google", name="Google Hybrid", overlay=False, control=True
+        tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        attr="Google", name="Google Satellite (No Labels)", overlay=False, control=True
     ).add_to(m)
 
     if st.session_state.roi_geom:
         roi = ee.Geometry(st.session_state.roi_geom)
         
-        # 1. Fetch Base Thermal Image
+        # Fetch Base Thermal Image
         l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).sort('CLOUD_COVER').first()
         thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
         
-        # 2. ULTRA-HD SMOOTHING
+        # ULTRA-HD SMOOTHING
         thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=3)
 
-        # 3. CALCULATE FIXED SCALE FROM ORIGINAL DATA
+        # CALCULATE FIXED SCALE FROM ORIGINAL DATA
         stats_fixed = thermal_hd.reduceRegion(reducer=ee.Reducer.percentile([5, 95]), geometry=roi, scale=30, maxPixels=1e9).getInfo()
         fixed_min = stats_fixed.get('ST_B10_p5', 20)
         fixed_max = stats_fixed.get('ST_B10_p95', 40)
         if fixed_max == fixed_min: fixed_max += 1
 
-        # 4. APPLY SIMULATED COOLING 
+        # APPLY SIMULATED COOLING 
         current_mitigation = st.session_state.mitigation_level
         max_sim_drop = (current_mitigation / 100.0) * 4.5 
         
@@ -224,7 +254,7 @@ with col_map:
         thermal_simulated = thermal_hd.subtract(cooling_layer)
         thermal_final = thermal_simulated.clip(roi)
 
-        # 5. VISUALIZE USING FIXED SCALE
+        # VISUALIZE USING FIXED SCALE
         vis_params = {
             'min': fixed_min, 
             'max': fixed_max, 
@@ -236,14 +266,33 @@ with col_map:
         
         empty_boundary = ee.Image().byte().paint(featureCollection=ee.FeatureCollection([ee.Feature(roi)]), color=1, width=3)
         m.addLayer(empty_boundary, {'palette': ['00FF88']}, 'Target Boundary')
+        
+        # 🎯 NEW: Add visual crosshair marker where user clicked
+        if st.session_state.clicked_coords:
+            folium.Marker(
+                st.session_state.clicked_coords,
+                icon=folium.Icon(color="red", icon="crosshairs", prefix='fa')
+            ).add_to(m)
 
-    # 🌟 NEW: Render map flawlessly using streamlit-folium 🌟
+    # 🌟 Render map flawlessly using streamlit-folium 🌟
     map_data = st_folium(m, height=750, use_container_width=True, key=f"map_update_{st.session_state.mitigation_level}")
 
+    # Capture Box Drawing
     if map_data and map_data.get('last_active_drawing'):
         new_geom = map_data['last_active_drawing']['geometry']
         if st.session_state.roi_geom != new_geom:
             st.session_state.roi_geom = new_geom
             st.session_state.mitigation_level = 0
+            st.session_state.clicked_coords = None # Reset click on new draw
             st.rerun()
 
+    # 🎯 NEW: Capture Pinpoint Map Clicks
+    if map_data and map_data.get('last_clicked'):
+        clicked_lat = map_data['last_clicked']['lat']
+        clicked_lng = map_data['last_clicked']['lng']
+        new_coords = [clicked_lat, clicked_lng]
+        
+        # Only rerun if they clicked a new spot
+        if st.session_state.clicked_coords != new_coords:
+            st.session_state.clicked_coords = new_coords
+            st.rerun()
