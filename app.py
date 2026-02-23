@@ -36,7 +36,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
 with col_btn2:
     if st.button("🚀 INITIALIZE ORBITAL RADAR", use_container_width=True):
-        st.switch_page("pages/1_Mission_Control.py")
+        st.switch_page("1_Mission_Control.py")
 
 st.markdown("<br><br><br><br>", unsafe_allow_html=True)
 
@@ -69,4 +69,5 @@ with c3:
         <div class='feature-text'>Simulate the financial and physical ROI of applying high-albedo cool roofs or planting green canopies.</div>
     </div>
     """, unsafe_allow_html=True)
+
 
