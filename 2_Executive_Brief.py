@@ -20,7 +20,7 @@ st.markdown("""
 
 st.markdown("<div class='back-btn'>", unsafe_allow_html=True)
 if st.button("⬅ Return to Mission Control"):
-    st.switch_page("pages/1_🌍_Mission_Control.py")
+    st.switch_page("pages/1_Mission_Control.py")
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("<div class='header-main'>ESG Compliance & Action Report</div>", unsafe_allow_html=True)
@@ -64,3 +64,4 @@ with cb:
     st.success("**🌳 Botanical Strategy:** Due to the local climate profile, immediately deploy high-canopy, drought-resistant native species such as *Azadirachta indica* (Neem) in the highlighted red zones to cast structural shadows.")
 
 st.download_button("📥 Download Official ESG PDF Report (Simulated)", "EcoPulse ESG Report Data...", file_name="EcoPulse_ESG_Report.txt")
+
