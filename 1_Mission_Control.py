@@ -74,7 +74,7 @@ with c1:
 with c2:
     st.markdown("<div class='nav-btn'>", unsafe_allow_html=True)
     if st.button("📊 Generate Executive Report"):
-        st.switch_page("pages/2_📊_Executive_Brief.py")
+        st.switch_page("pages/2_Executive_Brief.py")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # Layout Setup
@@ -218,3 +218,4 @@ with col_map:
         if st.session_state.clicked_coords != new_coords:
             st.session_state.clicked_coords = new_coords
             st.rerun()
+
