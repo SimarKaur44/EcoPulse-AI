@@ -2,7 +2,7 @@ import os
 import streamlit as st
 import ee
 import folium
-from folium.plugins import Draw
+from folium.plugins import Draw, Geocoder
 from streamlit_folium import st_folium
 import geocoder
 from datetime import datetime
@@ -21,10 +21,18 @@ def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
     ).add_to(self)
 
 folium.Map.addLayer = add_ee_layer
+
+# --- CLOUD MASKING FUNCTION ---
+def mask_l9_clouds(image):
+    qa = image.select('QA_PIXEL')
+    cloud_shadow_bit_mask = (1 << 4)
+    clouds_bit_mask = (1 << 3)
+    mask = qa.bitwiseAnd(cloud_shadow_bit_mask).eq(0).And(qa.bitwiseAnd(clouds_bit_mask).eq(0))
+    return image.updateMask(mask)
 # ---------------------------------------------------------
 
 # 1. High-Tech App Config
-st.set_page_config(layout="wide", page_title="EcoPulse | AI Summit 2026", page_icon="🌍", initial_sidebar_state="collapsed")
+st.set_page_config(layout="wide", page_title="EcoPulse | Core Engine", page_icon="🌍", initial_sidebar_state="collapsed")
 
 # 2. Premium "Enterprise SaaS" CSS Injection
 st.markdown("""
@@ -43,9 +51,6 @@ st.markdown("""
     .badge-high { background-color: rgba(239, 68, 68, 0.15); color: #FCA5A5; padding: 6px 12px; border-radius: 12px; font-size: 13px; font-weight: 700; border: 1px solid rgba(239, 68, 68, 0.3); }
     .badge-warn { background-color: rgba(245, 158, 11, 0.15); color: #FCD34D; padding: 6px 12px; border-radius: 12px; font-size: 13px; font-weight: 700; border: 1px solid rgba(245, 158, 11, 0.3); }
     .badge-good { background-color: rgba(16, 185, 129, 0.15); color: #6EE7B7; padding: 6px 12px; border-radius: 12px; font-size: 13px; font-weight: 700; border: 1px solid rgba(16, 185, 129, 0.3); }
-    .ai-box { background: linear-gradient(145deg, rgba(16, 185, 129, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%); border-left: 4px solid #3B82F6; padding: 20px; border-radius: 0px 8px 8px 0px; margin-top: 20px; }
-    .ai-title { color: #60A5FA; font-size: 15px; font-weight: 800; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
-    .ai-text { color: #CBD5E1; font-size: 15px; line-height: 1.6; margin-bottom: 6px; }
     div.stButton > button:first-child { background-color: transparent; color: #F87171; border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; font-weight: 600; }
     div.stButton > button:first-child:hover { background-color: rgba(239, 68, 68, 0.1); border: 1px solid #EF4444; }
     header {visibility: hidden;} footer {visibility: hidden;}
@@ -58,7 +63,7 @@ if 'map_center' not in st.session_state: st.session_state.map_center = [28.4610,
 if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 15
 if 'last_search' not in st.session_state: st.session_state.last_search = ""
 if 'mitigation_level' not in st.session_state: st.session_state.mitigation_level = 0
-if 'clicked_coords' not in st.session_state: st.session_state.clicked_coords = None # 🎯 NEW: Stores click location
+if 'clicked_coords' not in st.session_state: st.session_state.clicked_coords = None 
 
 dates = {
     "Jan - Mar 2025 (Spring/Baseline)": ['2025-01-01', '2025-03-31'],
@@ -69,22 +74,16 @@ dates = {
 
 # 3. Clean Top Header
 st.markdown("<div class='header-main'>EcoPulse | Global Climate Intelligence</div>", unsafe_allow_html=True)
-st.markdown("<div class='header-sub'>AI Summit 2026 Live Demo</div>", unsafe_allow_html=True)
+st.markdown("<div class='header-sub'>Orbital Telemetry & Mitigation Engine</div>", unsafe_allow_html=True)
 
 # 4. Engine Init
 try:
-    # 1. Create the hidden Earth Engine folder on the cloud server
     ee_path = os.path.expanduser('~/.config/earthengine')
     os.makedirs(ee_path, exist_ok=True)
-    
-    # 2. Extract the secret key from Streamlit's vault and write it to the server
     with open(os.path.join(ee_path, 'credentials'), 'w') as f:
         f.write(st.secrets["EARTHENGINE_TOKEN"])
-        
-    # 3. NOW boot up the engine!
     ee.Initialize(project='ecoplus-iilm')
     if not hasattr(ee.data, '_credentials'): ee.data._credentials = True
-
 except Exception as e:
     st.error(f"Earth Engine Connection Failed: {e}")
     st.stop()
@@ -93,7 +92,8 @@ except Exception as e:
 col_insight, col_map = st.columns([1.5, 2.5], gap="large")
 
 with col_insight:
-    search_query = st.text_input("📍 GLOBAL TARGETING SYSTEM", placeholder="Search 'Hyde Park London', 'Stanford'...", label_visibility="collapsed")
+    # Kept the manual search just in case, but map search is better
+    search_query = st.text_input("📍 MANUAL TARGET OVERRIDE", placeholder="Or use the live search bar directly on the map ➡️", label_visibility="collapsed")
     if search_query and search_query != st.session_state.last_search:
         with st.spinner(f"Locking coordinates for {search_query}..."):
             g = geocoder.arcgis(search_query)
@@ -126,17 +126,20 @@ with col_insight:
         roi = ee.Geometry(st.session_state.roi_geom)
         
         try:
-            l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterBounds(roi).filterDate(start_date, end_date).sort('CLOUD_COVER').first()
+            # 🌟 CLOUD MASKING & MEDIAN COMPOSITE APPLIED HERE 🌟
+            l9_collection = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterBounds(roi).filterDate(start_date, end_date).map(mask_l9_clouds)
+            l9_img = l9_collection.median() # Much safer than first()
+            
             s2_img = ee.ImageCollection('COPERNICUS/S2_SR').filterBounds(roi).filterDate(start_date, end_date).sort('CLOUDY_PIXEL_PERCENTAGE').first()
             
             ndvi = s2_img.normalizedDifference(['B8', 'B4']).reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=10).get('nd').getInfo()
             thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
             
-            # Base Stats (Before Mitigation)
+            # 🌟 ABSOLUTE MIN/MAX MATH (No Percentiles) 🌟
             temp_mean_base = thermal_raw.reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=30).get('ST_B10').getInfo()
-            stats_base = thermal_raw.reduceRegion(reducer=ee.Reducer.percentile([5, 95]), geometry=roi, scale=30, maxPixels=1e9).getInfo()
-            t_min_base = stats_base.get('ST_B10_p5')
-            t_max_base = stats_base.get('ST_B10_p95')
+            stats_base = thermal_raw.reduceRegion(reducer=ee.Reducer.minMax(), geometry=roi, scale=30, maxPixels=1e9).getInfo()
+            t_min_base = stats_base.get('ST_B10_min')
+            t_max_base = stats_base.get('ST_B10_max')
 
             n_val = round(ndvi, 2) if ndvi else 0
             t_val_base = round(temp_mean_base, 1) if temp_mean_base else 0
@@ -178,7 +181,7 @@ with col_insight:
             st.write("")
             st.markdown(f"<div><span class='metric-value-small'>₹ {sim_loss} Lakhs</span></div><div class='metric-label'>Est. Annual Energy Loss (Cooling Taxes)</div>", unsafe_allow_html=True)
             
-            # 🎯 NEW: PINPOINT TELEMETRY UI
+            # 🎯 PINPOINT TELEMETRY UI
             st.markdown("<hr style='margin-top: 15px; margin-bottom: 15px;'>", unsafe_allow_html=True)
             st.markdown("<div class='section-title' style='color: #F87171;'>📍 Pinpoint Inspection</div>", unsafe_allow_html=True)
             
@@ -192,7 +195,6 @@ with col_insight:
                 point_temp_raw = val_dict.get('ST_B10')
                 
                 if point_temp_raw is not None:
-                    # Apply simulation drop to this specific point
                     point_norm = max(0, min(1, (point_temp_raw - t_min_val_base) / (t_max_val_base - t_min_val_base))) if t_max_val_base > t_min_val_base else 0
                     point_cooling = point_norm * simulated_drop
                     final_point_temp = round(point_temp_raw - point_cooling, 1)
@@ -219,33 +221,35 @@ with col_insight:
         st.markdown("<div style='color: #64748B; font-size: 18px; margin-top: 50px;'>Awaiting sector selection...<br>Use the ⬟ tool on the map to outline a campus zone.</div>", unsafe_allow_html=True)
 
 with col_map:
-    # 🌟 Using raw, unbreakable Folium 🌟
     m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
+    
+    # 🌟 NEW: LIVE AUTOCOMPLETE SEARCH BAR IN MAP 🌟
+    Geocoder(position='topright').add_to(m)
+    
     Draw(export=True).add_to(m) 
     
-    # Using satellite view without labels (lyrs=s)
+    # 🌟 LABELS ARE BACK ON (lyrs=y) 🌟
     folium.TileLayer(
-        tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-        attr="Google", name="Google Satellite (No Labels)", overlay=False, control=True
+        tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+        attr="Google", name="Google Hybrid", overlay=False, control=True
     ).add_to(m)
 
     if st.session_state.roi_geom:
         roi = ee.Geometry(st.session_state.roi_geom)
         
-        # Fetch Base Thermal Image
-        l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).sort('CLOUD_COVER').first()
-        thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
+        # Cloud masked fetching
+        l9_collection = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).map(mask_l9_clouds)
+        l9_img = l9_collection.median()
         
-        # ULTRA-HD SMOOTHING
+        thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
         thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=3)
 
-        # CALCULATE FIXED SCALE FROM ORIGINAL DATA
-        stats_fixed = thermal_hd.reduceRegion(reducer=ee.Reducer.percentile([5, 95]), geometry=roi, scale=30, maxPixels=1e9).getInfo()
-        fixed_min = stats_fixed.get('ST_B10_p5', 20)
-        fixed_max = stats_fixed.get('ST_B10_p95', 40)
+        # Absolute MinMax for map scaling
+        stats_fixed = thermal_hd.reduceRegion(reducer=ee.Reducer.minMax(), geometry=roi, scale=30, maxPixels=1e9).getInfo()
+        fixed_min = stats_fixed.get('ST_B10_min', 20)
+        fixed_max = stats_fixed.get('ST_B10_max', 40)
         if fixed_max == fixed_min: fixed_max += 1
 
-        # APPLY SIMULATED COOLING 
         current_mitigation = st.session_state.mitigation_level
         max_sim_drop = (current_mitigation / 100.0) * 4.5 
         
@@ -254,7 +258,6 @@ with col_map:
         thermal_simulated = thermal_hd.subtract(cooling_layer)
         thermal_final = thermal_simulated.clip(roi)
 
-        # VISUALIZE USING FIXED SCALE
         vis_params = {
             'min': fixed_min, 
             'max': fixed_max, 
@@ -267,32 +270,27 @@ with col_map:
         empty_boundary = ee.Image().byte().paint(featureCollection=ee.FeatureCollection([ee.Feature(roi)]), color=1, width=3)
         m.addLayer(empty_boundary, {'palette': ['00FF88']}, 'Target Boundary')
         
-        # 🎯 NEW: Add visual crosshair marker where user clicked
         if st.session_state.clicked_coords:
             folium.Marker(
                 st.session_state.clicked_coords,
                 icon=folium.Icon(color="red", icon="crosshairs", prefix='fa')
             ).add_to(m)
 
-    # 🌟 Render map flawlessly using streamlit-folium 🌟
     map_data = st_folium(m, height=750, use_container_width=True, key=f"map_update_{st.session_state.mitigation_level}")
 
-    # Capture Box Drawing
     if map_data and map_data.get('last_active_drawing'):
         new_geom = map_data['last_active_drawing']['geometry']
         if st.session_state.roi_geom != new_geom:
             st.session_state.roi_geom = new_geom
             st.session_state.mitigation_level = 0
-            st.session_state.clicked_coords = None # Reset click on new draw
+            st.session_state.clicked_coords = None 
             st.rerun()
 
-    # 🎯 NEW: Capture Pinpoint Map Clicks
     if map_data and map_data.get('last_clicked'):
         clicked_lat = map_data['last_clicked']['lat']
         clicked_lng = map_data['last_clicked']['lng']
         new_coords = [clicked_lat, clicked_lng]
         
-        # Only rerun if they clicked a new spot
         if st.session_state.clicked_coords != new_coords:
             st.session_state.clicked_coords = new_coords
             st.rerun()
