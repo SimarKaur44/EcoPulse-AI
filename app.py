@@ -5,7 +5,6 @@ import folium
 from folium.plugins import Draw, Geocoder
 from streamlit_folium import st_folium
 import geocoder
-import pandas as pd
 
 # --- 🌟 CORE ENGINE FIX (UNTOUCHED) 🌟 ---
 def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
@@ -16,6 +15,13 @@ def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
         name=name, overlay=True, control=True, opacity=opacity
     ).add_to(self)
 folium.Map.addLayer = add_ee_layer
+
+def mask_l9_clouds(image):
+    qa = image.select('QA_PIXEL')
+    cloud_shadow_bit_mask = (1 << 4)
+    clouds_bit_mask = (1 << 3)
+    mask = qa.bitwiseAnd(cloud_shadow_bit_mask).eq(0).And(qa.bitwiseAnd(clouds_bit_mask).eq(0))
+    return image.updateMask(mask)
 # ---------------------------------------------------------
 
 st.set_page_config(layout="wide", page_title="EcoPulse | AI Summit 2026", page_icon="🌍", initial_sidebar_state="collapsed")
@@ -49,19 +55,6 @@ st.markdown("""
     .metric-value-small { font-size: 24px; font-weight: 600; color: #F8FAFC; line-height: 1.1; }
     .metric-label { font-size: 13px; color: #94A3B8; font-weight: 500; }
     
-    /* Report Page Hero Cards */
-    .hero-card { background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 24px; height: 100%; display: flex; flex-direction: column; justify-content: center; transition: transform 0.2s;}
-    .hero-card:hover { transform: translateY(-3px); border-color: rgba(255, 255, 255, 0.1); }
-    .hero-title { font-size: 14px; color: #94A3B8; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;}
-    .hero-data { font-size: 48px; font-weight: 900; color: #F8FAFC; line-height: 1;}
-    .hero-subdata { font-size: 14px; color: #64748B; margin-top: 8px; font-weight: 500;}
-    
-    /* Before/After Cards */
-    .ba-container { display: flex; gap: 15px; margin-top: 15px;}
-    .ba-card { flex: 1; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 8px; text-align: center;}
-    .ba-header { font-size: 12px; color: #94A3B8; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 10px;}
-    .ba-val { font-size: 32px; font-weight: 800; color: #F8FAFC;}
-    
     header {visibility: hidden;} footer {visibility: hidden;}
     
     /* Navigation Buttons */
@@ -78,8 +71,7 @@ if 'map_center' not in st.session_state: st.session_state.map_center = [28.4610,
 if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 15
 if 'last_search' not in st.session_state: st.session_state.last_search = ""
 if 'location_name' not in st.session_state: st.session_state.location_name = "Selected Sector"
-if 'mitigation_level' not in st.session_state: st.session_state.mitigation_level = 0
-if 'user_bill' not in st.session_state: st.session_state.user_bill = 15.0 # Default ₹15 Lakhs
+if 'user_bill' not in st.session_state: st.session_state.user_bill = 15.0 
 if 'report_data' not in st.session_state: st.session_state.report_data = {}
 if 'chat_history' not in st.session_state: st.session_state.chat_history = []
 
@@ -91,13 +83,13 @@ dates = {
 }
 
 # ==========================================
-# 🏠 PAGE 1: THE HOMEPAGE (REDESIGNED SAAS VIBE)
+# 🏠 PAGE 1: THE HOMEPAGE
 # ==========================================
 if st.session_state.app_page == "Home":
     st.markdown("<br><br>", unsafe_allow_html=True)
     
     st.markdown("<div class='hero-bg'>", unsafe_allow_html=True)
-    st.markdown("<div style='background: rgba(16, 185, 129, 0.1); color: #34D399; padding: 6px 16px; border-radius: 50px; font-size: 13px; font-weight: bold; display: inline-block; margin-bottom: 20px; border: 1px solid rgba(16, 185, 129, 0.3);'>New: AI Impact Simulator Live</div>", unsafe_allow_html=True)
+    st.markdown("<div style='background: rgba(16, 185, 129, 0.1); color: #34D399; padding: 6px 16px; border-radius: 50px; font-size: 13px; font-weight: bold; display: inline-block; margin-bottom: 20px; border: 1px solid rgba(16, 185, 129, 0.3);'>AI Impact Telemetry Live</div>", unsafe_allow_html=True)
     st.markdown("<h1 style='font-size: 80px; color: #F8FAFC; font-weight: 900; letter-spacing: -2px; margin-bottom: 0px;'>EcoPulse</h1>", unsafe_allow_html=True)
     st.markdown("<h3 style='color: #94A3B8; font-size: 24px; font-weight: 400; margin-top: 5px;'>Revolutionize Your Climate Strategy with <span style='color: #10B981; font-weight:bold;'>Orbital AI</span></h3>", unsafe_allow_html=True)
     st.markdown("<p style='color: #64748B; font-size: 18px; max-width: 700px; margin: 20px auto; line-height: 1.6;'>Concrete buildings act like thermal batteries, trapping heat and forcing AC units to burn extreme amounts of electricity. Pinpoint heat leaks globally and prescribe automated mitigation strategies.</p>", unsafe_allow_html=True)
@@ -120,10 +112,10 @@ if st.session_state.app_page == "Home":
     with c2:
         st.markdown("<div style='background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; text-align:center;'><h1 style='font-size: 40px; margin:0;'>💸</h1><h3 style='color: white; font-size:18px;'>Financial Impact</h3><p style='color: #64748B; font-size:14px;'>Input your electricity bill to calculate exactly how much money is being burnt on extra AC power.</p></div>", unsafe_allow_html=True)
     with c3:
-        st.markdown("<div style='background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; text-align:center;'><h1 style='font-size: 40px; margin:0;'>🌱</h1><h3 style='color: white; font-size:18px;'>LEED Compliance</h3><p style='color: #64748B; font-size:14px;'>Tracks green-building certification points. <i>Feature requested during preliminary judging.</i></p></div>", unsafe_allow_html=True)
+        st.markdown("<div style='background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; text-align:center;'><h1 style='font-size: 40px; margin:0;'>🌱</h1><h3 style='color: white; font-size:18px;'>LEED Compliance</h3><p style='color: #64748B; font-size:14px;'>Actionable insights to help your facility qualify for green-building certification and tax credits.</p></div>", unsafe_allow_html=True)
 
 # ==========================================
-# 🌍 PAGE 2: THE DASHBOARD 
+# 🌍 PAGE 2: THE DASHBOARD (CLEANED)
 # ==========================================
 elif st.session_state.app_page == "Dashboard":
     try:
@@ -158,13 +150,13 @@ elif st.session_state.app_page == "Dashboard":
     col_insight, col_map = st.columns([1.5, 2.5], gap="large")
 
     with col_insight:
+        # 1. Search Bar & Clear Button
         c_search, c_clear = st.columns([3, 1])
         with c_search:
             search_query = st.text_input("TARGET COORDINATES", placeholder="Search sector...", label_visibility="collapsed")
         with c_clear:
             if st.button("🗑️ Clear", use_container_width=True):
                 st.session_state.roi_geom = None
-                st.session_state.mitigation_level = 0
                 st.session_state.report_data = {}
                 st.rerun()
 
@@ -177,19 +169,22 @@ elif st.session_state.app_page == "Dashboard":
                     st.session_state.roi_geom = None
                     st.session_state.last_search = search_query
                     st.session_state.location_name = search_query 
-                    st.session_state.mitigation_level = 0
                     st.rerun()
 
-        # Added Timeframe Filter Back
+        # 2. Timeframe Filter
         st.markdown("<div class='section-title' style='margin-top:15px;'>Orbital Timeframe Filter</div>", unsafe_allow_html=True)
         timeframe = st.selectbox("Timeframe", list(dates.keys()), label_visibility="collapsed")
         start_date, end_date = dates[timeframe]
+        
+        # 3. Electricity Bill Input
+        st.markdown("<div class='section-title' style='margin-top:15px; color: #FCD34D;'>Approx Annual Electricity Bill (₹ Lakhs)</div>", unsafe_allow_html=True)
+        user_bill = st.number_input("Bill", min_value=1.0, value=st.session_state.user_bill, step=1.0, label_visibility="collapsed")
+        st.session_state.user_bill = user_bill
 
         if st.session_state.roi_geom:
             roi = ee.Geometry(st.session_state.roi_geom)
             
             try:
-                # 🌟 REVERTED TO YOUR EXACT HIGH-RES HEAT MAP LOGIC 🌟
                 l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).sort('CLOUD_COVER').first()
                 s2_img = ee.ImageCollection('COPERNICUS/S2_SR').filterBounds(roi).filterDate(start_date, end_date).sort('CLOUDY_PIXEL_PERCENTAGE').first()
                 
@@ -197,9 +192,9 @@ elif st.session_state.app_page == "Dashboard":
                 thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
                 thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=3)
                 
-                # Math Stats for Text
                 temp_mean_base = thermal_hd.reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=30, maxPixels=1e9).get('ST_B10').getInfo()
                 stats_fixed = thermal_hd.reduceRegion(reducer=ee.Reducer.percentile([5, 95]), geometry=roi, scale=30, maxPixels=1e9).getInfo()
+                
                 t_min_base = stats_fixed.get('ST_B10_p5', 20)
                 t_max_base = stats_fixed.get('ST_B10_p95', 40)
 
@@ -209,16 +204,9 @@ elif st.session_state.app_page == "Dashboard":
                 t_max_val_base = round(t_max_base, 1) if t_max_base else 0
                 variance_base = round(t_max_val_base - t_min_val_base, 1)
                 
-                # 💸 NEW SIMPLE FINANCIAL INPUT 💸
-                st.markdown("<div class='section-title' style='margin-top:15px; color: #FCD34D;'>Financial Baseline</div>", unsafe_allow_html=True)
-                user_bill = st.number_input("Approx Annual Electricity Bill (₹ Lakhs)", min_value=1.0, value=st.session_state.user_bill, step=1.0)
-                st.session_state.user_bill = user_bill
-                
-                # Simple Math: For every 1 degree over 28C, estimate a 4% increase in the bill
                 waste_multiplier = 0.04
                 base_loss_lakhs = round(user_bill * max(0, (t_val_base - 28) * waste_multiplier), 2)
 
-                # Save base data to session state for the Report page
                 st.session_state.report_data = {
                     "t_avg_base": t_val_base, 
                     "variance": variance_base, 
@@ -230,11 +218,17 @@ elif st.session_state.app_page == "Dashboard":
 
                 st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px; border-color: #334155;'>", unsafe_allow_html=True)
                 st.markdown("<div class='section-title'>Zone Temperature Profile</div>", unsafe_allow_html=True)
-                st.markdown(f"<div><span class='metric-value'>{t_val_base}°C</span></div><div class='metric-label'>Average Surface Temperature</div>", unsafe_allow_html=True)
                 
-                st.markdown(f"<div style='margin-top: 15px;'><span class='metric-value-small' style='color:#EF4444;'>₹ {base_loss_lakhs} Lakhs</span></div><div class='metric-label'>Estimated Loss due to Thermal Heat Trap</div>", unsafe_allow_html=True)
+                # Basic metrics row exactly as requested
+                cm1, cm2, cm3, cm4 = st.columns(4)
+                cm1.markdown(f"<div class='metric-label'>Min Temp</div><div class='metric-value-small' style='color:#60A5FA;'>{t_min_val_base}°C</div>", unsafe_allow_html=True)
+                cm2.markdown(f"<div class='metric-label'>Max Temp</div><div class='metric-value-small' style='color:#FCA5A5;'>{t_max_val_base}°C</div>", unsafe_allow_html=True)
+                cm3.markdown(f"<div class='metric-label'>Avg Temp</div><div class='metric-value-small'>{t_val_base}°C</div>", unsafe_allow_html=True)
+                cm4.markdown(f"<div class='metric-label'>Difference</div><div class='metric-value-small' style='color:#FCD34D;'>{variance_base}°C</div>", unsafe_allow_html=True)
+                
+                st.markdown(f"<div style='margin-top: 20px;'><span class='metric-value-small' style='color:#EF4444;'>₹ {base_loss_lakhs} Lakhs</span></div><div class='metric-label'>Estimated Loss due to Thermal Heat Trap</div>", unsafe_allow_html=True)
 
-                st.info("💡 **Ready for Analysis:** Click 'Generate AI Report' on the top right to simulate solutions and view LEED compliance.")
+                st.info("💡 **Ready for Analysis:** Click 'Generate AI Report' on the top right to chat with the AI.")
 
             except Exception as error:
                 st.error("Engine processing error. Sector may be too large or cloud cover detected.")
@@ -249,8 +243,6 @@ elif st.session_state.app_page == "Dashboard":
 
         if st.session_state.roi_geom:
             roi = ee.Geometry(st.session_state.roi_geom)
-            
-            # 🌟 REVERTED TO YOUR EXACT RENDER LOGIC AND PALETTE 🌟
             l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).sort('CLOUD_COVER').first()
             thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
             thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=3)
@@ -260,23 +252,13 @@ elif st.session_state.app_page == "Dashboard":
             fixed_max = stats_fixed.get('ST_B10_p95', 40)
             if fixed_max == fixed_min: fixed_max += 1
 
-            current_mitigation = st.session_state.mitigation_level
-            max_sim_drop = (current_mitigation / 100.0) * 4.5 
-            
-            thermal_norm = thermal_hd.subtract(fixed_min).divide(fixed_max - fixed_min).clamp(0, 1)
-            cooling_layer = thermal_norm.multiply(max_sim_drop)
-            thermal_simulated = thermal_hd.subtract(cooling_layer)
-            thermal_final = thermal_simulated.clip(roi)
-
             vis_params = {
                 'min': fixed_min, 
                 'max': fixed_max, 
                 'palette': ['#00008B', '#00FFFF', '#00FF00', '#FFFF00', '#FF7F00', '#FF0000', '#800000']
             }
             
-            layer_name = f'Simulation: {current_mitigation}% Investment'
-            m.addLayer(thermal_final, vis_params, layer_name, opacity=0.55)
-            
+            m.addLayer(thermal_hd.clip(roi), vis_params, 'Thermal Signature', opacity=0.55)
             empty_boundary = ee.Image().byte().paint(featureCollection=ee.FeatureCollection([ee.Feature(roi)]), color=1, width=3)
             m.addLayer(empty_boundary, {'palette': ['00FF88']}, 'Target Boundary')
 
@@ -286,7 +268,6 @@ elif st.session_state.app_page == "Dashboard":
             new_geom = map_data['last_active_drawing']['geometry']
             if st.session_state.roi_geom != new_geom:
                 st.session_state.roi_geom = new_geom
-                st.session_state.mitigation_level = 0
                 st.rerun()
 
 # ==========================================
@@ -310,7 +291,6 @@ elif st.session_state.app_page == "Report":
     data = st.session_state.report_data
     loc = st.session_state.location_name.lower()
 
-    # 🌟 ADVANCED CONTEXT CLASSIFIER 🌟
     if any(x in loc for x in ['school', 'college', 'university', 'iilm', 'institute', 'academy']):
         context_type = "Educational Campus"
         emoji = "🎓"
@@ -339,56 +319,23 @@ elif st.session_state.app_page == "Report":
     st.markdown(f"<h3 style='color: #94A3B8; font-weight: 500; font-size: 16px;'>AI recognized location: <span style='color: #3B82F6; font-weight:bold;'>{emoji} {context_type}</span></h3>", unsafe_allow_html=True)
     st.markdown("<hr style='margin: 10px 0px 20px 0px; border-color: #334155;'>", unsafe_allow_html=True)
 
-    # --- HEAT MITIGATION SIMULATOR ---
-    st.markdown("<div class='header-main' style='font-size: 20px; color: #60A5FA; margin-bottom: 15px;'>⚙️ Solution Simulator</div>", unsafe_allow_html=True)
-    
-    sim_col1, sim_col2 = st.columns([1.2, 2], gap="large")
-    
-    with sim_col1:
-        st.markdown("<div style='background: rgba(255,255,255,0.02); padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); height: 100%;'>", unsafe_allow_html=True)
-        st.markdown("<div class='section-title'>Annual Electricity Bill (₹ Lakhs)</div>", unsafe_allow_html=True)
-        new_bill = st.number_input("Bill", min_value=1.0, value=st.session_state.user_bill, step=1.0, label_visibility="collapsed")
-        st.session_state.user_bill = new_bill
-        
-        st.markdown("<div class='section-title' style='margin-top: 20px;'>% of Area Cooled (White Roofs/Trees)</div>", unsafe_allow_html=True)
-        mitigation = st.slider("Intervention %", 0, 100, st.session_state.mitigation_level, format="%d%%", label_visibility="collapsed")
-        st.session_state.mitigation_level = mitigation
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # Simple Bill Math
-    waste_multiplier = 0.04
-    base_loss_lakhs = round(new_bill * max(0, (data['t_avg_base'] - 28) * waste_multiplier), 2)
-    
-    simulated_drop = (mitigation / 100.0) * 4.5 
-    display_t = round(data['t_avg_base'] - simulated_drop, 1)
-    
-    sim_loss_lakhs = round(new_bill * max(0, (display_t - 28) * waste_multiplier), 2)
-    savings = round(base_loss_lakhs - sim_loss_lakhs, 2)
-
-    with sim_col2:
-        st.markdown("<div class='ba-container'>", unsafe_allow_html=True)
-        st.markdown(f"""
-        <div class='ba-card'>
-            <div class='ba-header'>Average Temp</div>
-            <div class='ba-val'>{data['t_avg_base']}°C <span style='color:#64748B; font-weight:400;'>→</span> <span style='color:#34D399;'>{display_t}°C</span></div>
-            <div style='color:#10B981; font-weight:700; margin-top:5px;'>⬇ Drops {simulated_drop}°C</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown(f"""
-        <div class='ba-card'>
-            <div class='ba-header'>Bill Wasted on Extra AC</div>
-            <div class='ba-val'>₹{base_loss_lakhs}L <span style='color:#64748B; font-weight:400;'>→</span> <span style='color:#60A5FA;'>₹{sim_loss_lakhs}L</span></div>
-            <div style='color:#3B82F6; font-weight:700; margin-top:5px;'>⬇ Recovers ₹ {savings} Lakhs</div>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+    # Top Metrics Row
+    cm1, cm2, cm3 = st.columns(3)
+    cm1.markdown(f"<div style='background: rgba(255,255,255,0.02); padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);'><div class='section-title'>Peak Thermal Threat</div><div class='metric-value-small' style='color:#FCA5A5;'>{data['t_max']}°C</div></div>", unsafe_allow_html=True)
+    cm2.markdown(f"<div style='background: rgba(255,255,255,0.02); padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);'><div class='section-title'>Vegetation Health (NDVI)</div><div class='metric-value-small' style='color:#6EE7B7;'>{data['ndvi']}</div></div>", unsafe_allow_html=True)
+    cm3.markdown(f"<div style='background: rgba(255,255,255,0.02); padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);'><div class='section-title'>Bill Wasted on Extra AC</div><div class='metric-value-small' style='color:#EF4444;'>₹ {data['loss_base']} Lakhs</div></div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- ACTION PLAN & LEED ---
     col_ai, col_leed = st.columns([2, 1.5], gap="large")
     
+    # Calculate a hypothetical savings for the text
+    waste_multiplier = 0.04
+    hypothetical_drop = 2.25 
+    hypothetical_new_temp = data['t_avg_base'] - hypothetical_drop
+    new_loss = round(st.session_state.user_bill * max(0, (hypothetical_new_temp - 28) * waste_multiplier), 2)
+    savings = round(data['loss_base'] - new_loss, 2)
+
     with col_ai:
         st.markdown(f"<div class='section-title' style='color: #3B82F6;'>🤖 Highly Personalized AI Action Plan</div>", unsafe_allow_html=True)
         st.markdown(f"""
@@ -398,21 +345,15 @@ elif st.session_state.app_page == "Report":
             <li>{recs[0]}</li>
             <li>{recs[1]}</li>
         </ul>
-        <p style='color: #34D399; font-weight:bold; margin-top:10px;'>Financial Justification: This {mitigation}% cooling plan will save the facility ₹{savings} Lakhs in AC electricity overworking.</p>
+        <p style='color: #34D399; font-weight:bold; margin-top:10px;'>Financial Justification: Implementing a standard cool-roof and canopy plan will save this facility approximately ₹{savings} Lakhs in AC electricity overworking.</p>
         </div>
         """, unsafe_allow_html=True)
 
     with col_leed:
         st.markdown("<div style='background: rgba(16, 185, 129, 0.05); border-left: 3px solid #10B981; padding: 20px; border-radius: 4px;'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='color: #10B981; font-size: 16px; margin-top:0px;'>🌱 LEED Certification Tracker</h3>", unsafe_allow_html=True)
-        st.markdown("<p style='color: #94A3B8; font-size: 12px; font-style: italic;'>*Feature added based on judge's recommendation during prelims.</p>", unsafe_allow_html=True)
-        
-        if mitigation >= 50:
-            st.markdown("<h2 style='color: #34D399; font-size: 20px; margin: 10px 0px;'>Eligible (+2 Points) ✅</h2>", unsafe_allow_html=True)
-            st.markdown("<p style='color: #A7F3D0; font-size: 13px;'>Your simulation hits the 50% threshold to earn the 'Heat Island Reduction' credit, giving this facility massive tax advantages.</p>", unsafe_allow_html=True)
-        else:
-            st.markdown("<h2 style='color: #FCD34D; font-size: 20px; margin: 10px 0px;'>Ineligible ⚠️</h2>", unsafe_allow_html=True)
-            st.markdown("<p style='color: #FDE68A; font-size: 13px;'>Increase the slider to at least 50% to see how to qualify for green-building tax breaks.</p>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color: #10B981; font-size: 16px; margin-top:0px;'>🌱 LEED Certification Target</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #A7F3D0; font-size: 14px;'><strong>Sustainable Sites (SS): Heat Island Reduction</strong></p>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #D1D5DB; font-size: 13px;'>By executing the AI Action Plan and ensuring at least <strong>50% high-reflectance coverage</strong> (cool roofs or canopies), this facility qualifies for <strong>+2 LEED Points</strong>.</p>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
     # --- AI Q&A CHAT ---
@@ -429,7 +370,6 @@ elif st.session_state.app_page == "Report":
         with st.chat_message("user"):
             st.markdown(prompt)
         
-        # Simple simulated response logic for hackathon speed
         ai_response = f"Based on the thermal telemetry for this {context_type}, prioritizing drought-resistant, broad-canopy native species like *Azadirachta indica* (Neem) will provide maximum shade while minimizing irrigation costs."
         st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
         with st.chat_message("assistant"):
