@@ -362,7 +362,7 @@ elif st.session_state.app_page == "Report":
             try:
                 # ☢️ NUCLEAR BYPASS: Hardcoding the exact key provided to bypass Streamlit Secrets completely.
                 genai.configure(api_key="AIzaSyDh0N_Xi-4G92p4gw757GB6JYFXf7Z7dIA")
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = genai.GenerativeModel('gemini-pro')
                 
                 system_prompt = f"You are EcoPulse AI, an expert in urban heat mitigation, LEED certification, and sustainable architecture. The user is evaluating {st.session_state.location_name} (Type: {context_type}). The current average surface temperature is {data['t_avg_base']}°C with a thermal variance of {data['variance']}°C. The estimated financial cooling loss is ₹{data['loss_base']} Lakhs. Answer the following query concisely, professionally, and provide actionable engineering/botanical advice: {prompt}"
                 
@@ -376,3 +376,4 @@ elif st.session_state.app_page == "Report":
         st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
         with st.chat_message("assistant"):
             st.markdown(ai_response)
+
