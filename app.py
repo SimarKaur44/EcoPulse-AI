@@ -7,7 +7,7 @@ from streamlit_folium import st_folium
 import geocoder
 import pandas as pd
 
-# --- 🌟 CORE ENGINE FIX 🌟 ---
+# --- 🌟 CORE ENGINE FIX (UNTOUCHED) 🌟 ---
 def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
     map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
     folium.raster_layers.TileLayer(
@@ -16,34 +16,62 @@ def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
         name=name, overlay=True, control=True, opacity=opacity
     ).add_to(self)
 folium.Map.addLayer = add_ee_layer
-
-def mask_l9_clouds(image):
-    qa = image.select('QA_PIXEL')
-    cloud_shadow_bit_mask = (1 << 4)
-    clouds_bit_mask = (1 << 3)
-    mask = qa.bitwiseAnd(cloud_shadow_bit_mask).eq(0).And(qa.bitwiseAnd(clouds_bit_mask).eq(0))
-    return image.updateMask(mask)
 # ---------------------------------------------------------
 
-st.set_page_config(layout="wide", page_title="EcoPulse | AI Impact Summit", page_icon="🌍", initial_sidebar_state="collapsed")
+st.set_page_config(layout="wide", page_title="EcoPulse | AI Summit 2026", page_icon="🌍", initial_sidebar_state="collapsed")
 
+# --- UI/UX ENTERPRISE STYLES ---
 st.markdown("""
 <style>
     .stApp { background-color: #0A0F18; color: #E2E8F0; font-family: 'Inter', sans-serif; }
+    
+    /* 🌟 SAAS LANDING PAGE BACKGROUND 🌟 */
+    .hero-bg {
+        background: radial-gradient(ellipse at 50% -20%, rgba(16, 185, 129, 0.15), transparent 60%),
+                    radial-gradient(ellipse at 100% 50%, rgba(59, 130, 246, 0.1), transparent 50%),
+                    linear-gradient(to bottom, #0A0F18, #05080f);
+        border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 24px;
+        padding: 80px 40px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    /* Typography */
     .header-main { color: #F8FAFC; font-size: 30px; font-weight: 800; margin-bottom: 0px; letter-spacing: -0.5px;}
     .header-sub { color: #34D399; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 25px; }
     .section-title { color: #94A3B8; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;}
+    
+    /* Dashboard Metrics */
     .metric-value { font-size: 42px; font-weight: 700; color: #F8FAFC; line-height: 1.1; }
     .metric-value-small { font-size: 24px; font-weight: 600; color: #F8FAFC; line-height: 1.1; }
     .metric-label { font-size: 13px; color: #94A3B8; font-weight: 500; }
-    .card { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); padding: 25px; border-radius: 6px; margin-bottom: 20px;}
+    
+    /* Report Page Hero Cards */
+    .hero-card { background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 24px; height: 100%; display: flex; flex-direction: column; justify-content: center; transition: transform 0.2s;}
+    .hero-card:hover { transform: translateY(-3px); border-color: rgba(255, 255, 255, 0.1); }
+    .hero-title { font-size: 14px; color: #94A3B8; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;}
+    .hero-data { font-size: 48px; font-weight: 900; color: #F8FAFC; line-height: 1;}
+    .hero-subdata { font-size: 14px; color: #64748B; margin-top: 8px; font-weight: 500;}
+    
+    /* Before/After Cards */
+    .ba-container { display: flex; gap: 15px; margin-top: 15px;}
+    .ba-card { flex: 1; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 8px; text-align: center;}
+    .ba-header { font-size: 12px; color: #94A3B8; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 10px;}
+    .ba-val { font-size: 32px; font-weight: 800; color: #F8FAFC;}
+    
     header {visibility: hidden;} footer {visibility: hidden;}
+    
+    /* Navigation Buttons */
     .nav-btn div.stButton > button:first-child { background-color: #10B981; color: #0A0F18; border: none; font-size: 16px; font-weight: 700; padding: 12px 24px; border-radius: 6px; transition: all 0.2s;}
     .nav-btn div.stButton > button:first-child:hover { background-color: #059669; }
     .sec-btn div.stButton > button:first-child { background-color: transparent; color: #94A3B8; border: 1px solid #475569; font-weight: 600;}
 </style>
 """, unsafe_allow_html=True)
 
+# --- GLOBAL SESSION STATES ---
 if 'app_page' not in st.session_state: st.session_state.app_page = "Home"
 if 'roi_geom' not in st.session_state: st.session_state.roi_geom = None
 if 'map_center' not in st.session_state: st.session_state.map_center = [28.4610, 77.4900]
@@ -51,41 +79,51 @@ if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 15
 if 'last_search' not in st.session_state: st.session_state.last_search = ""
 if 'location_name' not in st.session_state: st.session_state.location_name = "Selected Sector"
 if 'mitigation_level' not in st.session_state: st.session_state.mitigation_level = 0
-if 'facility_area' not in st.session_state: st.session_state.facility_area = 50000 
+if 'user_bill' not in st.session_state: st.session_state.user_bill = 15.0 # Default ₹15 Lakhs
 if 'report_data' not in st.session_state: st.session_state.report_data = {}
 if 'chat_history' not in st.session_state: st.session_state.chat_history = []
 
+dates = {
+    "Jan - Mar 2025 (Spring/Baseline)": ['2025-01-01', '2025-03-31'],
+    "Apr - Jul 2025 (Peak Summer)": ['2025-04-01', '2025-07-31'],
+    "Jan - Mar 2024 (Historical Spring)": ['2024-01-01', '2024-03-31'],
+    "Apr - Jul 2024 (Historical Summer)": ['2024-04-01', '2024-07-31'],
+}
+
 # ==========================================
-# 🏠 PAGE 1: THE HOMEPAGE (REDESIGNED)
+# 🏠 PAGE 1: THE HOMEPAGE (REDESIGNED SAAS VIBE)
 # ==========================================
 if st.session_state.app_page == "Home":
     st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; font-size: 80px; color: #F8FAFC; font-weight: 900; letter-spacing: -2px; margin-bottom: 0px;'>EcoPulse</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align: center; color: #34D399; font-size: 20px; font-weight: 600; letter-spacing: 4px; text-transform: uppercase; margin-top: 5px;'>Satellite-Powered Climate Intelligence</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #94A3B8; font-size: 18px; max-width: 800px; margin: 20px auto; line-height: 1.6;'>Concrete buildings act like thermal batteries, trapping heat and forcing AC units to burn extreme amounts of electricity. EcoPulse uses <b>Landsat 9 Telemetry</b> to pinpoint heat leaks and prescribe AI-driven cooling strategies.</p>", unsafe_allow_html=True)
+    
+    st.markdown("<div class='hero-bg'>", unsafe_allow_html=True)
+    st.markdown("<div style='background: rgba(16, 185, 129, 0.1); color: #34D399; padding: 6px 16px; border-radius: 50px; font-size: 13px; font-weight: bold; display: inline-block; margin-bottom: 20px; border: 1px solid rgba(16, 185, 129, 0.3);'>New: AI Impact Simulator Live</div>", unsafe_allow_html=True)
+    st.markdown("<h1 style='font-size: 80px; color: #F8FAFC; font-weight: 900; letter-spacing: -2px; margin-bottom: 0px;'>EcoPulse</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #94A3B8; font-size: 24px; font-weight: 400; margin-top: 5px;'>Revolutionize Your Climate Strategy with <span style='color: #10B981; font-weight:bold;'>Orbital AI</span></h3>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #64748B; font-size: 18px; max-width: 700px; margin: 20px auto; line-height: 1.6;'>Concrete buildings act like thermal batteries, trapping heat and forcing AC units to burn extreme amounts of electricity. Pinpoint heat leaks globally and prescribe automated mitigation strategies.</p>", unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1.5, 1, 1.5])
     with col2:
         st.markdown("<div class='nav-btn'>", unsafe_allow_html=True)
-        if st.button("🚀 Enter Dashboard", use_container_width=True):
+        if st.button("🚀 Launch Dashboard", use_container_width=True):
             st.session_state.app_page = "Dashboard"
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<br><br>", unsafe_allow_html=True)
     
-    # Visual Highlights
     c1, c2, c3 = st.columns(3, gap="large")
     with c1:
-        st.markdown("<div class='card' style='text-align:center;'><h1 style='font-size: 50px; margin:0;'>🛰️</h1><h3 style='color: white;'>Orbital Scanning</h3><p style='color: #94A3B8;'>Extracts precise Land Surface Temperature (LST) directly from space without needing ground sensors.</p></div>", unsafe_allow_html=True)
+        st.markdown("<div style='background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; text-align:center;'><h1 style='font-size: 40px; margin:0;'>🛰️</h1><h3 style='color: white; font-size:18px;'>Orbital Scanning</h3><p style='color: #64748B; font-size:14px;'>Extracts precise Land Surface Temperature (LST) directly from space without needing ground sensors.</p></div>", unsafe_allow_html=True)
     with c2:
-        st.markdown("<div class='card' style='text-align:center;'><h1 style='font-size: 50px; margin:0;'>💸</h1><h3 style='color: white;'>Financial Impact</h3><p style='color: #94A3B8;'>Calculates exactly how much extra money is being burnt on AC bills due to the trapped concrete heat.</p></div>", unsafe_allow_html=True)
+        st.markdown("<div style='background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; text-align:center;'><h1 style='font-size: 40px; margin:0;'>💸</h1><h3 style='color: white; font-size:18px;'>Financial Impact</h3><p style='color: #64748B; font-size:14px;'>Input your electricity bill to calculate exactly how much money is being burnt on extra AC power.</p></div>", unsafe_allow_html=True)
     with c3:
-        st.markdown("<div class='card' style='text-align:center;'><h1 style='font-size: 50px; margin:0;'>🌱</h1><h3 style='color: white;'>LEED Compliance</h3><p style='color: #94A3B8;'>Tracks green-building certification points. <i>Feature requested during preliminary judging.</i></p></div>", unsafe_allow_html=True)
+        st.markdown("<div style='background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; text-align:center;'><h1 style='font-size: 40px; margin:0;'>🌱</h1><h3 style='color: white; font-size:18px;'>LEED Compliance</h3><p style='color: #64748B; font-size:14px;'>Tracks green-building certification points. <i>Feature requested during preliminary judging.</i></p></div>", unsafe_allow_html=True)
 
 # ==========================================
-# 🌍 PAGE 2: THE DASHBOARD (SIMPLIFIED)
+# 🌍 PAGE 2: THE DASHBOARD 
 # ==========================================
 elif st.session_state.app_page == "Dashboard":
     try:
@@ -142,46 +180,64 @@ elif st.session_state.app_page == "Dashboard":
                     st.session_state.mitigation_level = 0
                     st.rerun()
 
+        # Added Timeframe Filter Back
+        st.markdown("<div class='section-title' style='margin-top:15px;'>Orbital Timeframe Filter</div>", unsafe_allow_html=True)
+        timeframe = st.selectbox("Timeframe", list(dates.keys()), label_visibility="collapsed")
+        start_date, end_date = dates[timeframe]
+
         if st.session_state.roi_geom:
             roi = ee.Geometry(st.session_state.roi_geom)
-            start_date, end_date = ['2025-04-01', '2025-07-31'] 
             
             try:
-                l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterBounds(roi).filterDate(start_date, end_date).map(mask_l9_clouds).sort('CLOUD_COVER').first()
+                # 🌟 REVERTED TO YOUR EXACT HIGH-RES HEAT MAP LOGIC 🌟
+                l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).sort('CLOUD_COVER').first()
+                s2_img = ee.ImageCollection('COPERNICUS/S2_SR').filterBounds(roi).filterDate(start_date, end_date).sort('CLOUDY_PIXEL_PERCENTAGE').first()
+                
+                ndvi = s2_img.normalizedDifference(['B8', 'B4']).reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=10).get('nd').getInfo()
                 thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
+                thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=3)
                 
-                excess_img = thermal_raw.subtract(28.0).multiply(thermal_raw.gt(28.0))
-                temp_mean_base = thermal_raw.reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=30).get('ST_B10').getInfo()
-                excess_mean_base = excess_img.reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=30).get('ST_B10').getInfo()
-                
-                stats_base = thermal_raw.reduceRegion(reducer=ee.Reducer.minMax(), geometry=roi, scale=30, maxPixels=1e9).getInfo()
-                t_min_base = stats_base.get('ST_B10_min')
-                t_max_base = stats_base.get('ST_B10_max')
+                # Math Stats for Text
+                temp_mean_base = thermal_hd.reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=30, maxPixels=1e9).get('ST_B10').getInfo()
+                stats_fixed = thermal_hd.reduceRegion(reducer=ee.Reducer.percentile([5, 95]), geometry=roi, scale=30, maxPixels=1e9).getInfo()
+                t_min_base = stats_fixed.get('ST_B10_p5', 20)
+                t_max_base = stats_fixed.get('ST_B10_p95', 40)
 
+                n_val = round(ndvi, 2) if ndvi else 0
                 t_val_base = round(temp_mean_base, 1) if temp_mean_base else 0
-                e_val_base = excess_mean_base if excess_mean_base else 0
                 t_min_val_base = round(t_min_base, 1) if t_min_base else 0
                 t_max_val_base = round(t_max_base, 1) if t_max_base else 0
                 variance_base = round(t_max_val_base - t_min_val_base, 1)
                 
+                # 💸 NEW SIMPLE FINANCIAL INPUT 💸
+                st.markdown("<div class='section-title' style='margin-top:15px; color: #FCD34D;'>Financial Baseline</div>", unsafe_allow_html=True)
+                user_bill = st.number_input("Approx Annual Electricity Bill (₹ Lakhs)", min_value=1.0, value=st.session_state.user_bill, step=1.0)
+                st.session_state.user_bill = user_bill
+                
+                # Simple Math: For every 1 degree over 28C, estimate a 4% increase in the bill
+                waste_multiplier = 0.04
+                base_loss_lakhs = round(user_bill * max(0, (t_val_base - 28) * waste_multiplier), 2)
+
+                # Save base data to session state for the Report page
                 st.session_state.report_data = {
                     "t_avg_base": t_val_base, 
                     "variance": variance_base, 
+                    "t_min": t_min_val_base,
                     "t_max": t_max_val_base, 
-                    "excess_deg": round(e_val_base, 2)
+                    "loss_base": base_loss_lakhs,
+                    "ndvi": n_val
                 }
 
                 st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px; border-color: #334155;'>", unsafe_allow_html=True)
-                st.markdown("<div class='section-title'>Spatial Telemetry Metrics</div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-title'>Zone Temperature Profile</div>", unsafe_allow_html=True)
                 st.markdown(f"<div><span class='metric-value'>{t_val_base}°C</span></div><div class='metric-label'>Average Surface Temperature</div>", unsafe_allow_html=True)
                 
-                v_color = '#EF4444' if variance_base > 5 else '#FCD34D' if variance_base > 3 else '#10B981'
-                st.markdown(f"<div style='background: rgba(255,255,255,0.03); border-left: 3px solid {v_color}; padding: 12px; margin-top: 15px;'><span style='color: #E2E8F0; font-size: 14px;'>Temperature Difference: {variance_base}°C across selected area.</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='margin-top: 15px;'><span class='metric-value-small' style='color:#EF4444;'>₹ {base_loss_lakhs} Lakhs</span></div><div class='metric-label'>Estimated Loss due to Thermal Heat Trap</div>", unsafe_allow_html=True)
 
-                st.info("💡 **Ready for Analysis:** Click 'Generate AI Report' on the top right to calculate extra AC costs and simulate solutions.")
+                st.info("💡 **Ready for Analysis:** Click 'Generate AI Report' on the top right to simulate solutions and view LEED compliance.")
 
             except Exception as error:
-                st.error("Engine processing error. Sector may be too large.")
+                st.error("Engine processing error. Sector may be too large or cloud cover detected.")
         else:
             st.markdown("<div style='color: #475569; font-size: 14px; margin-top: 50px;'>Use the polygon tool (⬟) on the map to outline a building or campus.</div>", unsafe_allow_html=True)
 
@@ -193,18 +249,36 @@ elif st.session_state.app_page == "Dashboard":
 
         if st.session_state.roi_geom:
             roi = ee.Geometry(st.session_state.roi_geom)
-            l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).map(mask_l9_clouds).sort('CLOUD_COVER').first()
+            
+            # 🌟 REVERTED TO YOUR EXACT RENDER LOGIC AND PALETTE 🌟
+            l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).sort('CLOUD_COVER').first()
             thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
             thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=3)
 
-            stats_fixed = thermal_hd.reduceRegion(reducer=ee.Reducer.minMax(), geometry=roi, scale=30, maxPixels=1e9).getInfo()
-            fixed_min = stats_fixed.get('ST_B10_min', 20)
-            fixed_max = stats_fixed.get('ST_B10_max', 40)
+            stats_fixed = thermal_hd.reduceRegion(reducer=ee.Reducer.percentile([5, 95]), geometry=roi, scale=30, maxPixels=1e9).getInfo()
+            fixed_min = stats_fixed.get('ST_B10_p5', 20)
+            fixed_max = stats_fixed.get('ST_B10_p95', 40)
             if fixed_max == fixed_min: fixed_max += 1
 
-            # 🌟 PALETTE FIXED: Removed confusing green. Now strictly Blue -> Cyan -> Yellow -> Red 🌟
-            vis_params = {'min': fixed_min, 'max': fixed_max, 'palette': ['#0000FF', '#00FFFF', '#FFFF00', '#FF0000']}
-            m.addLayer(thermal_hd.clip(roi), vis_params, 'Thermal Signature', opacity=0.55)
+            current_mitigation = st.session_state.mitigation_level
+            max_sim_drop = (current_mitigation / 100.0) * 4.5 
+            
+            thermal_norm = thermal_hd.subtract(fixed_min).divide(fixed_max - fixed_min).clamp(0, 1)
+            cooling_layer = thermal_norm.multiply(max_sim_drop)
+            thermal_simulated = thermal_hd.subtract(cooling_layer)
+            thermal_final = thermal_simulated.clip(roi)
+
+            vis_params = {
+                'min': fixed_min, 
+                'max': fixed_max, 
+                'palette': ['#00008B', '#00FFFF', '#00FF00', '#FFFF00', '#FF7F00', '#FF0000', '#800000']
+            }
+            
+            layer_name = f'Simulation: {current_mitigation}% Investment'
+            m.addLayer(thermal_final, vis_params, layer_name, opacity=0.55)
+            
+            empty_boundary = ee.Image().byte().paint(featureCollection=ee.FeatureCollection([ee.Feature(roi)]), color=1, width=3)
+            m.addLayer(empty_boundary, {'palette': ['00FF88']}, 'Target Boundary')
 
         map_data = st_folium(m, height=750, use_container_width=True, key=f"map_update_dash")
 
@@ -272,20 +346,23 @@ elif st.session_state.app_page == "Report":
     
     with sim_col1:
         st.markdown("<div style='background: rgba(255,255,255,0.02); padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); height: 100%;'>", unsafe_allow_html=True)
-        st.markdown("<div class='section-title'>Total Area (Sq.Ft)</div>", unsafe_allow_html=True)
-        new_area = st.number_input("Area", min_value=1000, max_value=5000000, value=st.session_state.facility_area, step=5000, label_visibility="collapsed")
-        st.session_state.facility_area = new_area
+        st.markdown("<div class='section-title'>Annual Electricity Bill (₹ Lakhs)</div>", unsafe_allow_html=True)
+        new_bill = st.number_input("Bill", min_value=1.0, value=st.session_state.user_bill, step=1.0, label_visibility="collapsed")
+        st.session_state.user_bill = new_bill
         
         st.markdown("<div class='section-title' style='margin-top: 20px;'>% of Area Cooled (White Roofs/Trees)</div>", unsafe_allow_html=True)
         mitigation = st.slider("Intervention %", 0, 100, st.session_state.mitigation_level, format="%d%%", label_visibility="collapsed")
         st.session_state.mitigation_level = mitigation
         st.markdown("</div>", unsafe_allow_html=True)
 
-    base_loss_lakhs = round((new_area * 60 * (data['excess_deg'] * 0.06)) / 100000, 2)
+    # Simple Bill Math
+    waste_multiplier = 0.04
+    base_loss_lakhs = round(new_bill * max(0, (data['t_avg_base'] - 28) * waste_multiplier), 2)
+    
     simulated_drop = (mitigation / 100.0) * 4.5 
     display_t = round(data['t_avg_base'] - simulated_drop, 1)
-    e_val_sim = max(0, data['excess_deg'] - simulated_drop)
-    sim_loss_lakhs = round((new_area * 60 * (e_val_sim * 0.06)) / 100000, 2)
+    
+    sim_loss_lakhs = round(new_bill * max(0, (display_t - 28) * waste_multiplier), 2)
     savings = round(base_loss_lakhs - sim_loss_lakhs, 2)
 
     with sim_col2:
@@ -300,9 +377,9 @@ elif st.session_state.app_page == "Report":
         
         st.markdown(f"""
         <div class='ba-card'>
-            <div class='ba-header'>Extra AC Bill Due To Heat Leak</div>
+            <div class='ba-header'>Bill Wasted on Extra AC</div>
             <div class='ba-val'>₹{base_loss_lakhs}L <span style='color:#64748B; font-weight:400;'>→</span> <span style='color:#60A5FA;'>₹{sim_loss_lakhs}L</span></div>
-            <div style='color:#3B82F6; font-weight:700; margin-top:5px;'>⬇ Saves ₹ {savings} Lakhs</div>
+            <div style='color:#3B82F6; font-weight:700; margin-top:5px;'>⬇ Recovers ₹ {savings} Lakhs</div>
         </div>
         """, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
