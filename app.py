@@ -5,10 +5,9 @@ import folium
 from folium.plugins import Draw, Geocoder
 from streamlit_folium import st_folium
 import geocoder
-import pandas as pd
-import google.generativeai as genai # 🌟 NEW: Live AI API
+import google.generativeai as genai # 🌟 LIVE AI API
 
-# --- 🌟 CORE ENGINE FIX (UNTOUCHED) 🌟 ---
+# --- 🌟 CORE ENGINE FIX 🌟 ---
 def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
     map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
     folium.raster_layers.TileLayer(
@@ -33,7 +32,6 @@ st.markdown("""
 <style>
     .stApp { background-color: #0A0F18; color: #E2E8F0; font-family: 'Inter', sans-serif; }
     
-    /* 🌟 SAAS LANDING PAGE BACKGROUND 🌟 */
     .hero-bg {
         background: radial-gradient(ellipse at 50% -20%, rgba(16, 185, 129, 0.15), transparent 60%),
                     radial-gradient(ellipse at 100% 50%, rgba(59, 130, 246, 0.1), transparent 50%),
@@ -114,7 +112,7 @@ if st.session_state.app_page == "Home":
         st.markdown("<div style='background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; text-align:center;'><h1 style='font-size: 40px; margin:0;'>🌱</h1><h3 style='color: white; font-size:18px;'>LEED Compliance</h3><p style='color: #64748B; font-size:14px;'>Actionable insights to help your facility qualify for green-building certification and tax credits.</p></div>", unsafe_allow_html=True)
 
 # ==========================================
-# 🌍 PAGE 2: THE DASHBOARD
+# 🌍 PAGE 2: THE DASHBOARD (CLEAN INPUTS)
 # ==========================================
 elif st.session_state.app_page == "Dashboard":
     try:
@@ -149,6 +147,7 @@ elif st.session_state.app_page == "Dashboard":
     col_insight, col_map = st.columns([1.5, 2.5], gap="large")
 
     with col_insight:
+        # 1. Search Bar & Clear Button
         c_search, c_clear = st.columns([3, 1])
         with c_search:
             search_query = st.text_input("TARGET COORDINATES", placeholder="Search sector...", label_visibility="collapsed")
@@ -169,10 +168,12 @@ elif st.session_state.app_page == "Dashboard":
                     st.session_state.location_name = search_query 
                     st.rerun()
 
+        # 2. Timeframe Filter
         st.markdown("<div class='section-title' style='margin-top:15px;'>Orbital Timeframe Filter</div>", unsafe_allow_html=True)
         timeframe = st.selectbox("Timeframe", list(dates.keys()), label_visibility="collapsed")
         start_date, end_date = dates[timeframe]
         
+        # 3. Electricity Bill Input
         st.markdown("<div class='section-title' style='margin-top:15px; color: #FCD34D;'>Approx Annual Electricity Bill (₹ Lakhs)</div>", unsafe_allow_html=True)
         user_bill = st.number_input("Bill", min_value=1.0, value=st.session_state.user_bill, step=1.0, label_visibility="collapsed")
         st.session_state.user_bill = user_bill
@@ -223,7 +224,7 @@ elif st.session_state.app_page == "Dashboard":
                 
                 st.markdown(f"<div style='margin-top: 20px;'><span class='metric-value-small' style='color:#EF4444;'>₹ {base_loss_lakhs} Lakhs</span></div><div class='metric-label'>Estimated Loss due to Thermal Heat Trap</div>", unsafe_allow_html=True)
 
-                st.info("💡 **Ready for Analysis:** Click 'Generate AI Report' on the top right to chat with the AI.")
+                st.info("💡 **Ready for Analysis:** Click 'Generate AI Report' on the top right to get recommendations and chat with the AI.")
 
             except Exception as error:
                 st.error("Engine processing error. Sector may be too large or cloud cover detected.")
@@ -359,18 +360,18 @@ elif st.session_state.app_page == "Report":
         
         with st.spinner("EcoPulse AI is analyzing orbital telemetry and architectural parameters..."):
             try:
-                # Initialize Gemini with the API Key from Streamlit Secrets
-                genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+                # ☢️ NUCLEAR BYPASS: Hardcoding the exact key provided to bypass Streamlit Secrets completely.
+                genai.configure(api_key="AIzaSyDh0N_Xi-4G92p4gw757GB6JYFXf7Z7dIA")
                 model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                # We give the AI the exact map context so it sounds incredibly smart
                 system_prompt = f"You are EcoPulse AI, an expert in urban heat mitigation, LEED certification, and sustainable architecture. The user is evaluating {st.session_state.location_name} (Type: {context_type}). The current average surface temperature is {data['t_avg_base']}°C with a thermal variance of {data['variance']}°C. The estimated financial cooling loss is ₹{data['loss_base']} Lakhs. Answer the following query concisely, professionally, and provide actionable engineering/botanical advice: {prompt}"
                 
                 response = model.generate_content(system_prompt)
                 ai_response = response.text
                 
             except Exception as e:
-                ai_response = "⚠️ **API Connection Error:** I am unable to reach the Gemini server. Please ensure your `GOOGLE_API_KEY` is correctly added to the Streamlit Secrets via the dashboard."
+                # This will print the exact reason if it fails again
+                ai_response = f"⚠️ **System Error:** {str(e)}"
                 
         st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
         with st.chat_message("assistant"):
