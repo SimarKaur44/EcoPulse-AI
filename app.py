@@ -7,7 +7,7 @@ from streamlit_folium import st_folium
 import geocoder
 import pandas as pd
 
-# --- 🌟 CORE ENGINE FIX 🌟 ---
+# --- 🌟 CORE ENGINE FIX (UNTOUCHED) 🌟 ---
 def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
     map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
     folium.raster_layers.TileLayer(
@@ -57,6 +57,7 @@ if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 15
 if 'last_search' not in st.session_state: st.session_state.last_search = ""
 if 'location_name' not in st.session_state: st.session_state.location_name = "Selected Sector"
 if 'mitigation_level' not in st.session_state: st.session_state.mitigation_level = 0
+if 'facility_area' not in st.session_state: st.session_state.facility_area = 50000 # Default 50k sq ft
 if 'report_data' not in st.session_state: st.session_state.report_data = {}
 
 # ==========================================
@@ -133,7 +134,7 @@ elif st.session_state.app_page == "Dashboard":
             start_date, end_date = ['2025-04-01', '2025-07-31'] 
             
             try:
-                # 🌟 BUG FIX: Restored `.sort('CLOUD_COVER').first()` to preserve Ultra-HD native resolution! 🌟
+                # Map rendering logic untouched
                 l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterBounds(roi).filterDate(start_date, end_date).map(mask_l9_clouds).sort('CLOUD_COVER').first()
                 s2_img = ee.ImageCollection('COPERNICUS/S2_SR').filterBounds(roi).filterDate(start_date, end_date).sort('CLOUDY_PIXEL_PERCENTAGE').first()
                 
@@ -151,7 +152,12 @@ elif st.session_state.app_page == "Dashboard":
                 t_max_val_base = round(t_max_base, 1) if t_max_base else 0
                 variance_base = round(t_max_val_base - t_min_val_base, 1)
                 
-                st.markdown("<div class='section-title' style='color: #3B82F6;'>🧪 AI Mitigation Simulator</div>", unsafe_allow_html=True)
+                # 🛠️ THE NEW ENTERPRISE FINANCIAL MATH 🛠️
+                st.markdown("<div class='section-title' style='color: #F59E0B;'>🏢 Facility Parameters</div>", unsafe_allow_html=True)
+                area_input = st.number_input("HVAC Cooling Footprint (Sq. Ft.)", min_value=1000, max_value=5000000, value=st.session_state.facility_area, step=5000)
+                st.session_state.facility_area = area_input
+
+                st.markdown("<div class='section-title' style='color: #3B82F6; margin-top: 15px;'>🧪 AI Mitigation Simulator</div>", unsafe_allow_html=True)
                 mitigation = st.slider("Investment Slider", 0, 100, st.session_state.mitigation_level, format="%d%%", label_visibility="collapsed", key="mitigation_slider")
                 st.session_state.mitigation_level = mitigation 
 
@@ -160,13 +166,21 @@ elif st.session_state.app_page == "Dashboard":
                 display_var = round(max(0.5, variance_base - (simulated_drop * 1.1)), 1)
                 display_color = "#34D399" if mitigation > 30 else "#F8FAFC"
                 
-                base_loss = 4.2 if t_val_base > 35 else 2.8 if t_val_base > 28 else 1.1
-                sim_loss = round(base_loss - ((mitigation/100) * base_loss * 0.7), 2)
+                # EPA Benchmark Math: 5% cooling penalty for every 1°C over 28°C baseline. Assume ₹60/sqft base annual cost.
+                base_cooling_cost = 60 
+                threshold_temp = 28.0
+                
+                base_penalty_pct = max(0, (t_val_base - threshold_temp) * 0.05)
+                sim_penalty_pct = max(0, (display_t - threshold_temp) * 0.05)
+                
+                # Calculate money lost to UHI specifically (in Lakhs)
+                base_loss_lakhs = round((area_input * base_cooling_cost * base_penalty_pct) / 100000, 2)
+                sim_loss_lakhs = round((area_input * base_cooling_cost * sim_penalty_pct) / 100000, 2)
                 
                 st.session_state.report_data = {
                     "t_avg_base": t_val_base, "t_avg_sim": display_t,
-                    "variance": display_var, "loss_base": base_loss, "loss_sim": sim_loss,
-                    "ndvi": n_val, "t_max": t_max_val_base, "mitigation": mitigation
+                    "variance": display_var, "loss_base": base_loss_lakhs, "loss_sim": sim_loss_lakhs,
+                    "ndvi": n_val, "t_max": t_max_val_base, "mitigation": mitigation, "area": area_input
                 }
                 
                 st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
@@ -183,7 +197,7 @@ elif st.session_state.app_page == "Dashboard":
                     st.markdown(f"<div class='shock-box' style='background: rgba(16, 185, 129, 0.1); border-left-color: #10B981;'><span class='shock-text' style='color: #34D399;'>✅ THERMAL VARIANCE: {display_var}°C</span></div>", unsafe_allow_html=True)
                 
                 st.write("")
-                st.markdown(f"<div><span class='metric-value-small'>₹ {sim_loss} Lakhs</span></div><div class='metric-label'>Est. Annual Energy Loss (Cooling Taxes)</div>", unsafe_allow_html=True)
+                st.markdown(f"<div><span class='metric-value-small'>₹ {sim_loss_lakhs} Lakhs</span></div><div class='metric-label'>Est. UHI Cooling Tax (EPA Benchmark)</div>", unsafe_allow_html=True)
 
             except Exception as error:
                 st.error("Telemetry sync failed. Area might be too large.")
@@ -198,7 +212,6 @@ elif st.session_state.app_page == "Dashboard":
 
         if st.session_state.roi_geom:
             roi = ee.Geometry(st.session_state.roi_geom)
-            # 🌟 BUG FIX: Restored `.sort('CLOUD_COVER').first()` 🌟
             l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).map(mask_l9_clouds).sort('CLOUD_COVER').first()
             thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
             thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=3)
@@ -264,7 +277,7 @@ elif st.session_state.app_page == "Report":
     c1, c2, c3 = st.columns(3)
     c1.markdown(f"<div class='card'><div class='section-title'>Peak Thermal Threat</div><div class='metric-value' style='color:#FCA5A5;'>{data['t_max']}°C</div></div>", unsafe_allow_html=True)
     c2.markdown(f"<div class='card'><div class='section-title'>Vegetation Health (NDVI)</div><div class='metric-value' style='color:#6EE7B7;'>{data['ndvi']}</div></div>", unsafe_allow_html=True)
-    c3.markdown(f"<div class='card'><div class='section-title'>Current Energy Bleed</div><div class='metric-value'>₹ {data['loss_base']} L</div></div>", unsafe_allow_html=True)
+    c3.markdown(f"<div class='card'><div class='section-title'>UHI Cooling Penalty</div><div class='metric-value'>₹ {data['loss_base']} L</div><div class='metric-label' style='margin-top:5px;'>Based on {data['area']:,} sq.ft</div></div>", unsafe_allow_html=True)
 
     col_graph, col_leed = st.columns([2, 1.5], gap="large")
     
@@ -273,8 +286,8 @@ elif st.session_state.app_page == "Report":
         chart_data = pd.DataFrame([
             {"Metric": "Baseline Temp (°C)", "Value": data['t_avg_base']},
             {"Metric": "Simulated Temp (°C)", "Value": data['t_avg_sim']},
-            {"Metric": "Baseline Cost (Lakhs)", "Value": data['loss_base']},
-            {"Metric": "Simulated Cost (Lakhs)", "Value": data['loss_sim']},
+            {"Metric": "Baseline Tax (Lakhs)", "Value": data['loss_base']},
+            {"Metric": "Simulated Tax (Lakhs)", "Value": data['loss_sim']},
         ])
         st.bar_chart(chart_data.set_index("Metric"), height=300)
 
