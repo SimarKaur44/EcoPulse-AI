@@ -122,7 +122,7 @@ elif st.session_state.app_page == "Dashboard":
                     st.session_state.map_zoom = 16
                     st.session_state.roi_geom = None
                     st.session_state.last_search = search_query
-                    st.session_state.location_name = search_query # Save name for personalized AI
+                    st.session_state.location_name = search_query 
                     st.session_state.mitigation_level = 0
                     st.rerun()
                     
@@ -130,11 +130,11 @@ elif st.session_state.app_page == "Dashboard":
 
         if st.session_state.roi_geom:
             roi = ee.Geometry(st.session_state.roi_geom)
-            start_date, end_date = ['2025-04-01', '2025-07-31'] # Fixed to peak summer
+            start_date, end_date = ['2025-04-01', '2025-07-31'] 
             
             try:
-                l9_collection = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterBounds(roi).filterDate(start_date, end_date).map(mask_l9_clouds)
-                l9_img = l9_collection.median()
+                # 🌟 BUG FIX: Restored `.sort('CLOUD_COVER').first()` to preserve Ultra-HD native resolution! 🌟
+                l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterBounds(roi).filterDate(start_date, end_date).map(mask_l9_clouds).sort('CLOUD_COVER').first()
                 s2_img = ee.ImageCollection('COPERNICUS/S2_SR').filterBounds(roi).filterDate(start_date, end_date).sort('CLOUDY_PIXEL_PERCENTAGE').first()
                 
                 ndvi = s2_img.normalizedDifference(['B8', 'B4']).reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=10).get('nd').getInfo()
@@ -163,7 +163,6 @@ elif st.session_state.app_page == "Dashboard":
                 base_loss = 4.2 if t_val_base > 35 else 2.8 if t_val_base > 28 else 1.1
                 sim_loss = round(base_loss - ((mitigation/100) * base_loss * 0.7), 2)
                 
-                # 📊 SAVE DATA FOR REPORT PAGE
                 st.session_state.report_data = {
                     "t_avg_base": t_val_base, "t_avg_sim": display_t,
                     "variance": display_var, "loss_base": base_loss, "loss_sim": sim_loss,
@@ -199,8 +198,9 @@ elif st.session_state.app_page == "Dashboard":
 
         if st.session_state.roi_geom:
             roi = ee.Geometry(st.session_state.roi_geom)
-            l9_collection = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).map(mask_l9_clouds)
-            thermal_raw = l9_collection.median().select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
+            # 🌟 BUG FIX: Restored `.sort('CLOUD_COVER').first()` 🌟
+            l9_img = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterDate(start_date, end_date).filterBounds(roi).map(mask_l9_clouds).sort('CLOUD_COVER').first()
+            thermal_raw = l9_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
             thermal_hd = thermal_raw.resample('bicubic').reproject(crs=thermal_raw.projection(), scale=3)
 
             stats_fixed = thermal_hd.reduceRegion(reducer=ee.Reducer.minMax(), geometry=roi, scale=30, maxPixels=1e9).getInfo()
@@ -247,7 +247,6 @@ elif st.session_state.app_page == "Report":
     data = st.session_state.report_data
     loc = st.session_state.location_name.lower()
 
-    # Dynamic AI Context Logic
     if "college" in loc or "university" in loc or "institute" in loc or "iilm" in loc:
         context_type = "Educational Campus"
         recs = ["Implement shaded student walkways between academic blocks.", "Apply high-albedo coatings to dormitories to reduce overnight thermal stress for students."]
@@ -262,26 +261,21 @@ elif st.session_state.app_page == "Report":
     
     st.markdown("<hr style='margin: 15px 0px 30px 0px;'>", unsafe_allow_html=True)
 
-    # Top Metrics
     c1, c2, c3 = st.columns(3)
     c1.markdown(f"<div class='card'><div class='section-title'>Peak Thermal Threat</div><div class='metric-value' style='color:#FCA5A5;'>{data['t_max']}°C</div></div>", unsafe_allow_html=True)
     c2.markdown(f"<div class='card'><div class='section-title'>Vegetation Health (NDVI)</div><div class='metric-value' style='color:#6EE7B7;'>{data['ndvi']}</div></div>", unsafe_allow_html=True)
     c3.markdown(f"<div class='card'><div class='section-title'>Current Energy Bleed</div><div class='metric-value'>₹ {data['loss_base']} L</div></div>", unsafe_allow_html=True)
 
-    # 📈 DATA GRAPH & LEED Integration
     col_graph, col_leed = st.columns([2, 1.5], gap="large")
     
     with col_graph:
         st.markdown("<div class='card-title' style='color: #60A5FA; font-weight: bold; margin-bottom: 15px;'>📉 Mitigation Impact Graph</div>", unsafe_allow_html=True)
-        # Create a pandas dataframe for the chart
-        chart_data = pd.DataFrame(
-            [
-                {"Metric": "Baseline Temperature (°C)", "Value": data['t_avg_base']},
-                {"Metric": "Simulated Temperature (°C)", "Value": data['t_avg_sim']},
-                {"Metric": "Baseline Cost (₹ Lakhs)", "Value": data['loss_base']},
-                {"Metric": "Simulated Cost (₹ Lakhs)", "Value": data['loss_sim']},
-            ]
-        )
+        chart_data = pd.DataFrame([
+            {"Metric": "Baseline Temp (°C)", "Value": data['t_avg_base']},
+            {"Metric": "Simulated Temp (°C)", "Value": data['t_avg_sim']},
+            {"Metric": "Baseline Cost (Lakhs)", "Value": data['loss_base']},
+            {"Metric": "Simulated Cost (Lakhs)", "Value": data['loss_sim']},
+        ])
         st.bar_chart(chart_data.set_index("Metric"), height=300)
 
     with col_leed:
@@ -298,7 +292,6 @@ elif st.session_state.app_page == "Report":
             st.markdown("<p style='color: #FDE68A; font-size: 13px;'>Increase mitigation slider above 50% on the Dashboard to simulate qualification for LEED compliance credits.</p>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # AI Contextual Recommendations
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown(f"<div class='section-title' style='color: #3B82F6;'>🧠 Contextual AI Strategy for {context_type}</div>", unsafe_allow_html=True)
     st.markdown(f"<ul style='color: #CBD5E1; font-size: 16px; line-height: 1.8;'><li>{recs[0]}</li><li>{recs[1]}</li><li><b>Financial ROI:</b> Implementing this strategy will recover approximately <b>₹ {round(data['loss_base'] - data['loss_sim'], 2)} Lakhs</b> annually in wasted HVAC expenditure.</li></ul>", unsafe_allow_html=True)
