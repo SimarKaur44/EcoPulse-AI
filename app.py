@@ -152,58 +152,134 @@ elif st.session_state.app_page == "Dashboard":
                 t_max_val_base = round(t_max_base, 1) if t_max_base else 0
                 variance_base = round(t_max_val_base - t_min_val_base, 1)
                 
-                # 🛠️ THE NEW ENTERPRISE FINANCIAL MATH 🛠️
-                st.markdown("<div class='section-title' style='color: #F59E0B;'>🏢 Facility Parameters</div>", unsafe_allow_html=True)
-                area_input = st.number_input("HVAC Cooling Footprint (Sq. Ft.)", min_value=1000, max_value=5000000, value=st.session_state.facility_area, step=5000)
-                st.session_state.facility_area = area_input
+               # -------------------------------
+# 🔥 HEAT SINK BASED FINANCIAL MODEL (Corrected & Defendable)
+# -------------------------------
 
-                st.markdown("<div class='section-title' style='color: #3B82F6; margin-top: 15px;'>🧪 AI Mitigation Simulator</div>", unsafe_allow_html=True)
-                mitigation = st.slider("Investment Slider", 0, 100, st.session_state.mitigation_level, format="%d%%", label_visibility="collapsed", key="mitigation_slider")
-                st.session_state.mitigation_level = mitigation 
+st.markdown("<div class='section-title'>🏢 Facility Parameters</div>", unsafe_allow_html=True)
+area_input = st.number_input(
+    "Conditioned Built-up Area (Sq. Ft.)",
+    min_value=1000,
+    max_value=5000000,
+    value=st.session_state.facility_area,
+    step=5000
+)
+st.session_state.facility_area = area_input
 
-                simulated_drop = (mitigation / 100.0) * 4.5 
-                display_t = round(t_val_base - simulated_drop, 1)
-                display_var = round(max(0.5, variance_base - (simulated_drop * 1.1)), 1)
-                display_color = "#34D399" if mitigation > 30 else "#F8FAFC"
-                
-                # EPA Benchmark Math: 5% cooling penalty for every 1°C over 28°C baseline. Assume ₹60/sqft base annual cost.
-                base_cooling_cost = 60 
-                threshold_temp = 28.0
-                
-                base_penalty_pct = max(0, (t_val_base - threshold_temp) * 0.05)
-                sim_penalty_pct = max(0, (display_t - threshold_temp) * 0.05)
-                
-                # Calculate money lost to UHI specifically (in Lakhs)
-                base_loss_lakhs = round((area_input * base_cooling_cost * base_penalty_pct) / 100000, 2)
-                sim_loss_lakhs = round((area_input * base_cooling_cost * sim_penalty_pct) / 100000, 2)
-                
-                st.session_state.report_data = {
-                    "t_avg_base": t_val_base, "t_avg_sim": display_t,
-                    "variance": display_var, "loss_base": base_loss_lakhs, "loss_sim": sim_loss_lakhs,
-                    "ndvi": n_val, "t_max": t_max_val_base, "mitigation": mitigation, "area": area_input
-                }
-                
-                st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
-                st.markdown("<div class='section-title'>Zone Temperature Profile</div>", unsafe_allow_html=True)
-                st.markdown(f"<div><span class='metric-value' style='color: {display_color};'>{display_t}°C</span></div><div class='metric-label'>Average Surface Temperature (LST)</div>", unsafe_allow_html=True)
-                
-                c1, c2 = st.columns(2)
-                c1.markdown(f"<div><span class='metric-value-small'>{t_min_val_base}°C</span></div><div class='metric-label' style='font-size:13px;'>Original Coolest Point</div>", unsafe_allow_html=True)
-                c2.markdown(f"<div><span class='metric-value-small' style='color:#FCA5A5;'>{t_max_val_base}°C</span></div><div class='metric-label' style='font-size:13px;'>Original Hottest Building</div>", unsafe_allow_html=True)
-                
-                if display_var > 4:
-                    st.markdown(f"<div class='shock-box'><span class='shock-text'>⚠️ THERMAL VARIANCE: {display_var}°C</span></div>", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"<div class='shock-box' style='background: rgba(16, 185, 129, 0.1); border-left-color: #10B981;'><span class='shock-text' style='color: #34D399;'>✅ THERMAL VARIANCE: {display_var}°C</span></div>", unsafe_allow_html=True)
-                
-                st.write("")
-                st.markdown(f"<div><span class='metric-value-small'>₹ {sim_loss_lakhs} Lakhs</span></div><div class='metric-label'>Est. UHI Cooling Tax (EPA Benchmark)</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-title' style='margin-top:15px;'>🧪 Mitigation Simulation</div>", unsafe_allow_html=True)
+mitigation = st.slider(
+    "Mitigation Level",
+    0, 100,
+    st.session_state.mitigation_level,
+    format="%d%%",
+    label_visibility="collapsed",
+    key="mitigation_slider"
+)
+st.session_state.mitigation_level = mitigation
 
-            except Exception as error:
-                st.error("Telemetry sync failed. Area might be too large.")
-        else:
-            st.markdown("<div style='color: #64748B; font-size: 18px; margin-top: 50px;'>Awaiting sector selection...<br>Use the ⬟ tool on the map to outline a campus zone.</div>", unsafe_allow_html=True)
+# -------------------------------
+# 🌡️ THERMAL EXCESS CALCULATION
+# -------------------------------
 
+comfort_baseline = 28.0  # thermal comfort threshold
+
+# Excess temperature only where above baseline
+thermal_excess = thermal_raw.subtract(comfort_baseline).max(0)
+
+# Mask only overheated pixels
+heat_mask = thermal_excess.gt(0)
+thermal_excess_masked = thermal_excess.updateMask(heat_mask)
+
+# Pixel area image (band name = 'area')
+pixel_area = ee.Image.pixelArea()
+
+# Total overheated area (m²)
+heat_area_stats = pixel_area.updateMask(heat_mask).reduceRegion(
+    reducer=ee.Reducer.sum(),
+    geometry=roi,
+    scale=30,
+    maxPixels=1e9
+).getInfo()
+
+heat_area_m2 = heat_area_stats.get('area', 0)
+
+# Mean excess temperature over overheated pixels
+mean_excess_stats = thermal_excess_masked.reduceRegion(
+    reducer=ee.Reducer.mean(),
+    geometry=roi,
+    scale=30,
+    maxPixels=1e9
+).getInfo()
+
+mean_excess_temp = mean_excess_stats.get('ST_B10', 0)
+
+# -------------------------------
+# 💸 ENERGY IMPACT MODEL
+# -------------------------------
+
+# Assumption: HVAC load increases ~6% per 1°C above comfort
+energy_increase_factor = 0.06
+
+# Base annual cooling cost assumption
+base_cooling_cost = 60  # ₹ per sqft per year
+
+# Percent increase based on real mean excess
+cooling_penalty_pct = mean_excess_temp * energy_increase_factor
+
+# Convert heat-affected area from m² → sqft
+heat_area_sqft = heat_area_m2 * 10.7639
+
+# Cooling loss applies only to overheated portion
+effective_area = min(heat_area_sqft, area_input)
+
+base_loss_lakhs = round(
+    (effective_area * base_cooling_cost * cooling_penalty_pct) / 100000,
+    2
+)
+
+# -------------------------------
+# ❄️ APPLY MITIGATION EFFECT
+# -------------------------------
+
+simulated_drop = (mitigation / 100.0) * 4.5
+
+adjusted_excess = max(0, mean_excess_temp - simulated_drop)
+
+sim_penalty_pct = adjusted_excess * energy_increase_factor
+
+sim_loss_lakhs = round(
+    (effective_area * base_cooling_cost * sim_penalty_pct) / 100000,
+    2
+)
+
+# -------------------------------
+# 📊 DISPLAY
+# -------------------------------
+
+display_t = round(temp_mean_base - simulated_drop, 1)
+
+st.session_state.report_data = {
+    "t_avg_base": round(temp_mean_base, 1),
+    "t_avg_sim": display_t,
+    "loss_base": base_loss_lakhs,
+    "loss_sim": sim_loss_lakhs,
+    "ndvi": n_val,
+    "t_max": t_max_val_base,
+    "mitigation": mitigation,
+    "area": area_input
+}
+
+st.markdown("<hr style='margin-top: 10px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+
+st.markdown("<div class='section-title'>Thermal Summary</div>", unsafe_allow_html=True)
+st.markdown(f"<div class='metric-value'>{display_t}°C</div><div class='metric-label'>Mean Surface Temperature</div>", unsafe_allow_html=True)
+
+st.write("")
+st.markdown(
+    f"<div class='metric-value-small'>₹ {sim_loss_lakhs} Lakhs</div>"
+    "<div class='metric-label'>Estimated Annual Cooling Burden (Heat Sink Only)</div>",
+    unsafe_allow_html=True
+)
     with col_map:
         m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
         Geocoder(position='topright').add_to(m)
@@ -309,3 +385,4 @@ elif st.session_state.app_page == "Report":
     st.markdown(f"<div class='section-title' style='color: #3B82F6;'>🧠 Contextual AI Strategy for {context_type}</div>", unsafe_allow_html=True)
     st.markdown(f"<ul style='color: #CBD5E1; font-size: 16px; line-height: 1.8;'><li>{recs[0]}</li><li>{recs[1]}</li><li><b>Financial ROI:</b> Implementing this strategy will recover approximately <b>₹ {round(data['loss_base'] - data['loss_sim'], 2)} Lakhs</b> annually in wasted HVAC expenditure.</li></ul>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
+
