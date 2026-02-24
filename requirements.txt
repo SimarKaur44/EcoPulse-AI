@@ -4,3 +4,4 @@ earthengine-api
 geocoder
 folium
 python-dateutil
+google-generativeai
