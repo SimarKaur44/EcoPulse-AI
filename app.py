@@ -5,6 +5,8 @@ import folium
 from folium.plugins import Draw, Geocoder
 from streamlit_folium import st_folium
 import geocoder
+import pandas as pd
+import google.generativeai as genai # 🌟 NEW: Live AI API
 
 # --- 🌟 CORE ENGINE FIX (UNTOUCHED) 🌟 ---
 def add_ee_layer(self, ee_image_object, vis_params, name, opacity=1):
@@ -45,19 +47,16 @@ st.markdown("""
         overflow: hidden;
     }
     
-    /* Typography */
     .header-main { color: #F8FAFC; font-size: 30px; font-weight: 800; margin-bottom: 0px; letter-spacing: -0.5px;}
     .header-sub { color: #34D399; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 25px; }
     .section-title { color: #94A3B8; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;}
     
-    /* Dashboard Metrics */
     .metric-value { font-size: 42px; font-weight: 700; color: #F8FAFC; line-height: 1.1; }
     .metric-value-small { font-size: 24px; font-weight: 600; color: #F8FAFC; line-height: 1.1; }
     .metric-label { font-size: 13px; color: #94A3B8; font-weight: 500; }
     
     header {visibility: hidden;} footer {visibility: hidden;}
     
-    /* Navigation Buttons */
     .nav-btn div.stButton > button:first-child { background-color: #10B981; color: #0A0F18; border: none; font-size: 16px; font-weight: 700; padding: 12px 24px; border-radius: 6px; transition: all 0.2s;}
     .nav-btn div.stButton > button:first-child:hover { background-color: #059669; }
     .sec-btn div.stButton > button:first-child { background-color: transparent; color: #94A3B8; border: 1px solid #475569; font-weight: 600;}
@@ -115,7 +114,7 @@ if st.session_state.app_page == "Home":
         st.markdown("<div style='background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; text-align:center;'><h1 style='font-size: 40px; margin:0;'>🌱</h1><h3 style='color: white; font-size:18px;'>LEED Compliance</h3><p style='color: #64748B; font-size:14px;'>Actionable insights to help your facility qualify for green-building certification and tax credits.</p></div>", unsafe_allow_html=True)
 
 # ==========================================
-# 🌍 PAGE 2: THE DASHBOARD (CLEANED)
+# 🌍 PAGE 2: THE DASHBOARD
 # ==========================================
 elif st.session_state.app_page == "Dashboard":
     try:
@@ -150,7 +149,6 @@ elif st.session_state.app_page == "Dashboard":
     col_insight, col_map = st.columns([1.5, 2.5], gap="large")
 
     with col_insight:
-        # 1. Search Bar & Clear Button
         c_search, c_clear = st.columns([3, 1])
         with c_search:
             search_query = st.text_input("TARGET COORDINATES", placeholder="Search sector...", label_visibility="collapsed")
@@ -171,12 +169,10 @@ elif st.session_state.app_page == "Dashboard":
                     st.session_state.location_name = search_query 
                     st.rerun()
 
-        # 2. Timeframe Filter
         st.markdown("<div class='section-title' style='margin-top:15px;'>Orbital Timeframe Filter</div>", unsafe_allow_html=True)
         timeframe = st.selectbox("Timeframe", list(dates.keys()), label_visibility="collapsed")
         start_date, end_date = dates[timeframe]
         
-        # 3. Electricity Bill Input
         st.markdown("<div class='section-title' style='margin-top:15px; color: #FCD34D;'>Approx Annual Electricity Bill (₹ Lakhs)</div>", unsafe_allow_html=True)
         user_bill = st.number_input("Bill", min_value=1.0, value=st.session_state.user_bill, step=1.0, label_visibility="collapsed")
         st.session_state.user_bill = user_bill
@@ -219,7 +215,6 @@ elif st.session_state.app_page == "Dashboard":
                 st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px; border-color: #334155;'>", unsafe_allow_html=True)
                 st.markdown("<div class='section-title'>Zone Temperature Profile</div>", unsafe_allow_html=True)
                 
-                # Basic metrics row exactly as requested
                 cm1, cm2, cm3, cm4 = st.columns(4)
                 cm1.markdown(f"<div class='metric-label'>Min Temp</div><div class='metric-value-small' style='color:#60A5FA;'>{t_min_val_base}°C</div>", unsafe_allow_html=True)
                 cm2.markdown(f"<div class='metric-label'>Max Temp</div><div class='metric-value-small' style='color:#FCA5A5;'>{t_max_val_base}°C</div>", unsafe_allow_html=True)
@@ -319,7 +314,6 @@ elif st.session_state.app_page == "Report":
     st.markdown(f"<h3 style='color: #94A3B8; font-weight: 500; font-size: 16px;'>AI recognized location: <span style='color: #3B82F6; font-weight:bold;'>{emoji} {context_type}</span></h3>", unsafe_allow_html=True)
     st.markdown("<hr style='margin: 10px 0px 20px 0px; border-color: #334155;'>", unsafe_allow_html=True)
 
-    # Top Metrics Row
     cm1, cm2, cm3 = st.columns(3)
     cm1.markdown(f"<div style='background: rgba(255,255,255,0.02); padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);'><div class='section-title'>Peak Thermal Threat</div><div class='metric-value-small' style='color:#FCA5A5;'>{data['t_max']}°C</div></div>", unsafe_allow_html=True)
     cm2.markdown(f"<div style='background: rgba(255,255,255,0.02); padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);'><div class='section-title'>Vegetation Health (NDVI)</div><div class='metric-value-small' style='color:#6EE7B7;'>{data['ndvi']}</div></div>", unsafe_allow_html=True)
@@ -329,15 +323,8 @@ elif st.session_state.app_page == "Report":
 
     col_ai, col_leed = st.columns([2, 1.5], gap="large")
     
-    # Calculate a hypothetical savings for the text
-    waste_multiplier = 0.04
-    hypothetical_drop = 2.25 
-    hypothetical_new_temp = data['t_avg_base'] - hypothetical_drop
-    new_loss = round(st.session_state.user_bill * max(0, (hypothetical_new_temp - 28) * waste_multiplier), 2)
-    savings = round(data['loss_base'] - new_loss, 2)
-
     with col_ai:
-        st.markdown(f"<div class='section-title' style='color: #3B82F6;'>🤖 Highly Personalized AI Action Plan</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='section-title' style='color: #3B82F6;'>🤖 Highly Personalized Baseline Action Plan</div>", unsafe_allow_html=True)
         st.markdown(f"""
         <div style='background: rgba(59, 130, 246, 0.05); padding: 20px; border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.2);'>
         <p style='color: #E2E8F0; font-size: 15px; margin-bottom: 10px;'>Because this is identified as a <b>{context_type}</b>, the system recommends:</p>
@@ -345,7 +332,7 @@ elif st.session_state.app_page == "Report":
             <li>{recs[0]}</li>
             <li>{recs[1]}</li>
         </ul>
-        <p style='color: #34D399; font-weight:bold; margin-top:10px;'>Financial Justification: Implementing a standard cool-roof and canopy plan will save this facility approximately ₹{savings} Lakhs in AC electricity overworking.</p>
+        <p style='color: #34D399; font-weight:bold; margin-top:10px;'>Talk to the AI below to simulate specific financial savings for your interventions!</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -356,21 +343,35 @@ elif st.session_state.app_page == "Report":
         st.markdown("<p style='color: #D1D5DB; font-size: 13px;'>By executing the AI Action Plan and ensuring at least <strong>50% high-reflectance coverage</strong> (cool roofs or canopies), this facility qualifies for <strong>+2 LEED Points</strong>.</p>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- AI Q&A CHAT ---
+    # --- 🌟 LIVE GEMINI AI CHATBOT 🌟 ---
     st.markdown("<hr style='margin: 30px 0px 20px 0px; border-color: #334155;'>", unsafe_allow_html=True)
-    st.markdown("<div class='header-main' style='font-size: 20px;'>💬 Ask EcoPulse AI</div>", unsafe_allow_html=True)
+    st.markdown("<div class='header-main' style='font-size: 20px;'>💬 Live Engineering Consultant (Gemini AI)</div>", unsafe_allow_html=True)
     st.markdown(f"<p style='color: #94A3B8; font-size: 14px;'>Ask specific questions about mitigating heat at {st.session_state.location_name}.</p>", unsafe_allow_html=True)
     
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             
-    if prompt := st.chat_input(f"e.g. 'What specific trees should we plant here?'"):
+    if prompt := st.chat_input(f"e.g. 'What specific trees should we plant here to drop temps by 2 degrees?'"):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         
-        ai_response = f"Based on the thermal telemetry for this {context_type}, prioritizing drought-resistant, broad-canopy native species like *Azadirachta indica* (Neem) will provide maximum shade while minimizing irrigation costs."
+        with st.spinner("EcoPulse AI is analyzing orbital telemetry and architectural parameters..."):
+            try:
+                # Initialize Gemini with the API Key from Streamlit Secrets
+                genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # We give the AI the exact map context so it sounds incredibly smart
+                system_prompt = f"You are EcoPulse AI, an expert in urban heat mitigation, LEED certification, and sustainable architecture. The user is evaluating {st.session_state.location_name} (Type: {context_type}). The current average surface temperature is {data['t_avg_base']}°C with a thermal variance of {data['variance']}°C. The estimated financial cooling loss is ₹{data['loss_base']} Lakhs. Answer the following query concisely, professionally, and provide actionable engineering/botanical advice: {prompt}"
+                
+                response = model.generate_content(system_prompt)
+                ai_response = response.text
+                
+            except Exception as e:
+                ai_response = "⚠️ **API Connection Error:** I am unable to reach the Gemini server. Please ensure your `GOOGLE_API_KEY` is correctly added to the Streamlit Secrets via the dashboard."
+                
         st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
         with st.chat_message("assistant"):
             st.markdown(ai_response)
